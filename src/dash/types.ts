@@ -6,8 +6,9 @@ export interface SegmentTemplateInfo {
   startNumber: number;
   timescale: number;
   duration: number;
-  segmentTimeline?: Array<{ t?: number; d: number; r?: number }>; // for future Timeline support
-  useTimeTemplate?: boolean; // if true, resolve $Time$, else $Number$
+  useTimeTemplate?: boolean;
+  mimeType?: string;
+  codecs?: string;
 }
 
 export interface SegmentDownloadResult {

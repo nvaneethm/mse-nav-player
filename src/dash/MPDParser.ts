@@ -38,8 +38,12 @@ export class MPDParser {
         const audioTracks: SegmentTemplateInfo[] = [];
 
         for (const set of adaptationSets) {
-            const mimeType = set.getAttribute('mimeType') || '';
             const representation = set.querySelector('Representation');
+            const mimeType = representation?.getAttribute('mimeType') ||
+                set.getAttribute('mimeType') ||
+                '';
+            const codecs = representation?.getAttribute('codecs') ||
+                (mimeType.includes('video') ? 'avc1.42E01E' : 'mp4a.40.2');
             const segmentTemplate =
                 representation?.querySelector('SegmentTemplate') ||
                 set.querySelector('SegmentTemplate');
@@ -56,7 +60,9 @@ export class MPDParser {
                 startNumber: parseInt(segmentTemplate.getAttribute('startNumber') || '1'),
                 timescale: parseInt(segmentTemplate.getAttribute('timescale') || '1'),
                 duration: parseInt(segmentTemplate.getAttribute('duration') || '1'),
-                useTimeTemplate: segmentTemplate.getAttribute('media')?.includes('$Time$') || false
+                useTimeTemplate: segmentTemplate.getAttribute('media')?.includes('$Time$') || false,
+                mimeType,
+                codecs
             };
 
             if (mimeType.includes('audio')) {

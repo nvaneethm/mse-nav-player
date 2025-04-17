@@ -24,9 +24,7 @@ export class MediaSourceHandler {
 
     this.tracks = trackTemplates.map(tpl => ({
       type: tpl.media.includes('audio') ? 'audio' : 'video',
-      mimeType: tpl.media.includes('audio')
-        ? 'audio/mp4; codecs="mp4a.40.2"'
-        : 'video/mp4; codecs="avc1.42E01E"',
+      mimeType: `${tpl.mimeType}; codecs="${tpl.codecs}"`,
       generator: new SegmentURLGenerator(tpl),
       segmentIndex: 0,
     }));
