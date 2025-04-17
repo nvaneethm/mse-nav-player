@@ -39,11 +39,16 @@ export class MPDParser {
 
         for (const set of adaptationSets) {
             const representation = set.querySelector('Representation');
-            const mimeType = representation?.getAttribute('mimeType') ||
+            const mimeType =
+                representation?.getAttribute('mimeType') ||
                 set.getAttribute('mimeType') ||
+                set.querySelector('ContentComponent')?.getAttribute('contentType') ||
                 '';
-            const codecs = representation?.getAttribute('codecs') ||
-                (mimeType.includes('video') ? 'avc1.42E01E' : 'mp4a.40.2');
+            const codecs =
+                representation?.getAttribute('codecs') ||
+                set.getAttribute('codecs') ||
+                (mimeType.includes('video') ? 'avc1.42E01E' :
+                    mimeType.includes('audio') ? 'mp4a.40.2' : '');
             const segmentTemplate =
                 representation?.querySelector('SegmentTemplate') ||
                 set.querySelector('SegmentTemplate');
