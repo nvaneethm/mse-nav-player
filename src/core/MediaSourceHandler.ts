@@ -1,55 +1,64 @@
 import { SegmentFetcher } from '../dash/SegmentFetcher.js';
+import { SegmentTemplateInfo } from '../dash/types.js';
 import { SegmentURLGenerator } from '../dash/SegmentURLGenerator.js';
 import { logger } from '../utils/Logger.js';
 
+interface TrackBuffer {
+  type: 'video' | 'audio';
+  mimeType: string;
+  generator: SegmentURLGenerator;
+  sourceBuffer?: SourceBuffer;
+  segmentIndex: number;
+}
+
 export class MediaSourceHandler {
   private mediaSource: MediaSource;
-  private sourceBuffer!: SourceBuffer;
   private videoEl: HTMLVideoElement;
-  private generator: SegmentURLGenerator;
   private fetcher: SegmentFetcher;
-  private mimeType: string = 'video/mp4; codecs="avc1.42E01E"'; // Update based on real codec if needed
-  private segmentIndex = 0;
+  private tracks: TrackBuffer[];
 
-  constructor(videoElement: HTMLVideoElement, generator: SegmentURLGenerator) {
-    this.videoEl = videoElement;
-    this.generator = generator;
+  constructor(videoEl: HTMLVideoElement, trackTemplates: SegmentTemplateInfo[]) {
+    this.videoEl = videoEl;
     this.fetcher = new SegmentFetcher();
     this.mediaSource = new MediaSource();
+
+    this.tracks = trackTemplates.map(tpl => ({
+      type: tpl.media.includes('audio') ? 'audio' : 'video',
+      mimeType: tpl.media.includes('audio')
+        ? 'audio/mp4; codecs="mp4a.40.2"'
+        : 'video/mp4; codecs="avc1.42E01E"',
+      generator: new SegmentURLGenerator(tpl),
+      segmentIndex: 0,
+    }));
   }
 
   async init() {
-    logger.info('[MediaSourceHandler] Initializing MSE');
-
     this.videoEl.src = URL.createObjectURL(this.mediaSource);
 
     this.mediaSource.addEventListener('sourceopen', async () => {
-      try {
-        this.sourceBuffer = this.mediaSource.addSourceBuffer(this.mimeType);
+      logger.info('[MediaSourceHandler] MediaSource opened');
 
-        // 1. Init segment
-        const initURL = this.generator.getInitializationURL();
-        const initSeg = await this.fetcher.fetchSegment(initURL);
-        this.sourceBuffer.appendBuffer(initSeg.data);
-        logger.debug('[MediaSourceHandler] Init segment appended');
+      for (const track of this.tracks) {
+        track.sourceBuffer = this.mediaSource.addSourceBuffer(track.mimeType);
 
-        // 2. Media segments
-        this.sourceBuffer.addEventListener('updateend', this.appendNextSegment);
-      } catch (e) {
-        logger.error('[MediaSourceHandler] Error during MSE init:', e);
+        const initUrl = track.generator.getInitializationURL();
+        const initSeg = await this.fetcher.fetchSegment(initUrl);
+        track.sourceBuffer.appendBuffer(initSeg.data);
+
+        track.sourceBuffer.addEventListener('updateend', () => this.appendNextSegment(track));
       }
     });
   }
 
-  private appendNextSegment = async () => {
-    const url = this.generator.getMediaSegmentURL(this.segmentIndex++);
-    logger.debug(`[MediaSourceHandler] Fetching segment ${this.segmentIndex - 1}: ${url}`);
+  private async appendNextSegment(track: TrackBuffer) {
+    const url = track.generator.getMediaSegmentURL(track.segmentIndex++);
+    logger.debug(`[${track.type}] Fetching segment ${track.segmentIndex - 1}: ${url}`);
 
     try {
-      const segment = await this.fetcher.fetchSegment(url);
-      this.sourceBuffer.appendBuffer(segment.data);
-    } catch (e) {
-      logger.warn('[MediaSourceHandler] Failed to fetch segment:', url, e);
+      const seg = await this.fetcher.fetchSegment(url);
+      track.sourceBuffer!.appendBuffer(seg.data);
+    } catch (err) {
+      logger.warn(`[${track.type}] Segment fetch failed:`, err);
     }
-  };
+  }
 }

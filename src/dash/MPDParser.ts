@@ -1,10 +1,8 @@
-import { SegmentTemplateInfo } from './types.js';
-import { logger } from '../utils/Logger.js';
-
-const MPD_NS = 'urn:mpeg:dash:schema:mpd:2011';
+import { logger } from "../utils/Logger";
+import { SegmentTemplateInfo } from "./types";
 
 export class MPDParser {
-    async parse(url: string): Promise<SegmentTemplateInfo> {
+    async parse(url: string): Promise<SegmentTemplateInfo[]> {
         logger.info('[MPDParser] Fetching manifest:', url);
 
         const response = await fetch(url);
@@ -15,31 +13,46 @@ export class MPDParser {
         const xmlText = await response.text();
         const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
 
-        const adaptationSet = xml.querySelector('AdaptationSet[mimeType^="video"]');
-        const representation = adaptationSet?.querySelector('Representation');
-        const segmentTemplate = representation?.querySelector('SegmentTemplate') ||
-            adaptationSet?.querySelector('SegmentTemplate');
+        const mpdBase = new URL('.', url).href;
+        const adaptationSets = Array.from(xml.querySelectorAll('AdaptationSet'));
 
-        if (!segmentTemplate || !representation) {
-            throw new Error('[MPDParser] No valid SegmentTemplate or Representation found.');
+        const videoTracks: SegmentTemplateInfo[] = [];
+        const audioTracks: SegmentTemplateInfo[] = [];
+
+        for (const set of adaptationSets) {
+            const mimeType = set.getAttribute('mimeType') || '';
+            const representation = set.querySelector('Representation');
+            const segmentTemplate =
+                representation?.querySelector('SegmentTemplate') ||
+                set.querySelector('SegmentTemplate');
+            if (!representation || !segmentTemplate) continue;
+
+            const baseTag = set.querySelector('BaseURL')?.textContent ?? '';
+            const baseURL = new URL(baseTag || '.', mpdBase).href;
+
+            const info: SegmentTemplateInfo = {
+                baseURL,
+                representationID: representation.getAttribute('id') || '',
+                initialization: segmentTemplate.getAttribute('initialization') || '',
+                media: segmentTemplate.getAttribute('media') || '',
+                startNumber: parseInt(segmentTemplate.getAttribute('startNumber') || '1'),
+                timescale: parseInt(segmentTemplate.getAttribute('timescale') || '1'),
+                duration: parseInt(segmentTemplate.getAttribute('duration') || '1'),
+                useTimeTemplate: segmentTemplate.getAttribute('media')?.includes('$Time$') || false
+            };
+
+            if (mimeType.includes('audio')) {
+                audioTracks.push(info);
+            } else if (mimeType.includes('video')) {
+                videoTracks.push(info);
+            }
         }
 
-        const explicitBase = adaptationSet?.querySelector('BaseURL')?.textContent;
-        const mpdBase = new URL('.', url).href;
-        const baseURL = explicitBase ? new URL(explicitBase, mpdBase).href : mpdBase;
+        logger.debug('[MPDParser] Parsed videoTracks:', videoTracks);
+        logger.debug('[MPDParser] Parsed audioTracks:', audioTracks);
 
-        const info: SegmentTemplateInfo = {
-            baseURL,
-            representationID: representation.getAttribute('id') || '',
-            initialization: segmentTemplate.getAttribute('initialization') || '',
-            media: segmentTemplate.getAttribute('media') || '',
-            startNumber: parseInt(segmentTemplate.getAttribute('startNumber') || '1'),
-            timescale: parseInt(segmentTemplate.getAttribute('timescale') || '1'),
-            duration: parseInt(segmentTemplate.getAttribute('duration') || '1'),
-            useTimeTemplate: segmentTemplate.getAttribute('media')?.includes('$Time$') || false
-        };
 
-        logger.debug('[MPDParser] Parsed SegmentTemplateInfo:', info);
-        return info;
+
+        return [...videoTracks, ...audioTracks];
     }
 }
