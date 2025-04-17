@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MSE DASH Player</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #121212;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+
+    video {
+      width: 640px;
+      height: 360px;
+      background-color: black;
+    }
+
+    button {
+      margin-top: 1rem;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>DASH / MSE Player</h1>
+  <video id="video" controls></video>
+  <br />
+  <button id="playButton">Play Video</button>
+
+  <script src="../dist/mse-nav-player.es5.js"></script></body>
+</html>
