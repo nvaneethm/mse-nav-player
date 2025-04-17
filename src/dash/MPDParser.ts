@@ -3,6 +3,24 @@ import { SegmentTemplateInfo } from "./types";
 
 export class MPDParser {
     async parse(url: string): Promise<SegmentTemplateInfo[]> {
+        const { videoTracks, audioTracks } = await this.parseAdaptationSets(url);
+        return [...videoTracks, ...audioTracks];
+    }
+
+    async parseVideo(url: string): Promise<SegmentTemplateInfo[]> {
+        const { videoTracks } = await this.parseAdaptationSets(url);
+        return videoTracks;
+    }
+
+    async parseAudio(url: string): Promise<SegmentTemplateInfo[]> {
+        const { audioTracks } = await this.parseAdaptationSets(url);
+        return audioTracks;
+    }
+
+    private async parseAdaptationSets(url: string): Promise<{
+        videoTracks: SegmentTemplateInfo[];
+        audioTracks: SegmentTemplateInfo[];
+    }> {
         logger.info('[MPDParser] Fetching manifest:', url);
 
         const response = await fetch(url);
@@ -53,6 +71,6 @@ export class MPDParser {
 
 
 
-        return [...videoTracks, ...audioTracks];
+        return { videoTracks, audioTracks };
     }
 }
