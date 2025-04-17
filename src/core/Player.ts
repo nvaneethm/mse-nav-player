@@ -3,10 +3,19 @@ import { MediaSourceHandler } from './MediaSourceHandler.js';
 import { logger } from '../utils/Logger.js';
 import { SegmentTemplateInfo } from '../dash/types.js';
 
+type PlayerEventHook = () => void;
+type ErrorHook = (err: unknown) => void;
+
 export class Player {
   private videoElement?: HTMLVideoElement;
   private mediaSourceHandler?: MediaSourceHandler;
   private manifestUrl?: string;
+
+  public onPlay?: PlayerEventHook;
+  public onPause?: PlayerEventHook;
+  public onEnded?: PlayerEventHook;
+  public onReady?: PlayerEventHook;
+  public onError?: ErrorHook;
 
   constructor() {
     logger.setLevel('debug');
@@ -14,6 +23,11 @@ export class Player {
 
   attachVideoElement(video: HTMLVideoElement) {
     this.videoElement = video;
+
+    this.videoElement.onplay = () => this.onPlay?.();
+    this.videoElement.onpause = () => this.onPause?.();
+    this.videoElement.onended = () => this.onEnded?.();
+    this.videoElement.onerror = () => this.onError?.(this.videoElement?.error);
     logger.info('[Player] Video element attached');
   }
 
@@ -25,17 +39,27 @@ export class Player {
     this.manifestUrl = manifestUrl;
     logger.info('[Player] Loading manifest:', manifestUrl);
 
-    const parser = new MPDParser();
-    const videoTracks = await parser.parseVideo(manifestUrl);
-    const audioTracks = await parser.parseAudio(manifestUrl);
-    const tracks: SegmentTemplateInfo[] = [...videoTracks, ...audioTracks];
+    try {
+      const parser = new MPDParser();
+      const videoTracks = await parser.parseVideo(manifestUrl);
+      const audioTracks = await parser.parseAudio(manifestUrl);
+      const tracks: SegmentTemplateInfo[] = [...videoTracks, ...audioTracks];
 
-    this.mediaSourceHandler = new MediaSourceHandler(this.videoElement, tracks);
-    await this.mediaSourceHandler.init();
+      this.mediaSourceHandler = new MediaSourceHandler(this.videoElement, tracks);
+      await this.mediaSourceHandler.init();
+
+      this.onReady?.();
+    } catch (err) {
+      logger.error('[Player] Error during load:', err);
+      this.onError?.(err);
+    }
   }
 
   play() {
-    this.videoElement?.play();
+    this.videoElement?.play().catch(err => {
+      logger.error('[Player] Play error:', err);
+      this.onError?.(err);
+    });
   }
 
   pause() {
@@ -54,5 +78,25 @@ export class Player {
     if (this.videoElement) {
       this.videoElement.currentTime = time;
     }
+  }
+
+  reset() {
+    if (this.videoElement) {
+      this.videoElement.pause();
+      this.videoElement.removeAttribute('src');
+      this.videoElement.load();
+    }
+
+    this.mediaSourceHandler = undefined;
+    this.manifestUrl = undefined;
+
+    logger.info('[Player] Reset complete');
+  }
+
+  destroy() {
+    this.reset();
+    this.videoElement = undefined;
+
+    logger.info('[Player] Destroyed player');
   }
 }
