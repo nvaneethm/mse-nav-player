@@ -6,9 +6,10 @@ export interface SegmentTemplateInfo {
   startNumber: number;
   timescale: number;
   duration: number;
-  useTimeTemplate?: boolean;
+  useTimeTemplate: boolean;
   mimeType?: string;
   codecs?: string;
+  timeline?: number[];
 }
 
 export interface SegmentDownloadResult {
