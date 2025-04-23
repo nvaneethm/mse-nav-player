@@ -57,6 +57,21 @@ export class MPDParser {
             const baseTag = set.querySelector('BaseURL')?.textContent ?? '';
             const baseURL = new URL(baseTag || '.', mpdBase).href;
 
+            const timeline: number[] = [];
+            const timelineNode = segmentTemplate.querySelector('SegmentTimeline');
+            if (timelineNode) {
+                let currentTime = 0;
+                for (const s of Array.from(timelineNode.querySelectorAll('S'))) {
+                    const t = parseInt(s.getAttribute('t') || '') || currentTime;
+                    const d = parseInt(s.getAttribute('d') || '');
+                    const r = parseInt(s.getAttribute('r') || '0');
+                    for (let i = 0; i <= (r || 0); i++) {
+                        timeline.push(t + i * d);
+                    }
+                    currentTime = t + ((r || 0) + 1) * d;
+                }
+            }
+
             const info: SegmentTemplateInfo = {
                 baseURL,
                 representationID: representation.getAttribute('id') || '',
@@ -67,7 +82,9 @@ export class MPDParser {
                 duration: parseInt(segmentTemplate.getAttribute('duration') || '1'),
                 useTimeTemplate: segmentTemplate.getAttribute('media')?.includes('$Time$') || false,
                 mimeType,
-                codecs
+                codecs,
+                timeline: timeline.length > 0 ? timeline : undefined
+
             };
 
             if (mimeType.includes('audio')) {
