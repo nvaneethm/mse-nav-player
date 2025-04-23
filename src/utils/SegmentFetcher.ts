@@ -1,6 +1,6 @@
-import { SegmentDownloadResult } from "./types";
+import { SegmentDownloadResult } from "../dash/types";
 
-export class SegmentFetcher {
+export default class SegmentFetcher {
     constructor(private maxRetries: number = 3) {}
   
     async fetchSegment(url: string): Promise<SegmentDownloadResult> {

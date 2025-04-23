@@ -1,4 +1,4 @@
-import { SegmentTemplateInfo } from './types';
+import { SegmentTemplateInfo } from "../core/types";
 
 export class SegmentURLGenerator {
   private baseURL: string;
