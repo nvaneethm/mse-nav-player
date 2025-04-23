@@ -1,5 +1,5 @@
+import { SegmentTemplateInfo } from "../core/types";
 import { logger } from "../utils/Logger";
-import { SegmentTemplateInfo } from "./types";
 
 export class MPDParser {
     async parse(url: string): Promise<SegmentTemplateInfo[]> {

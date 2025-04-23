@@ -1,11 +1,13 @@
 import { MPDParser } from '../dash/MPDParser.js';
 import { MediaSourceHandler } from './MediaSourceHandler.js';
 import { logger } from '../utils/Logger.js';
-import { SegmentTemplateInfo } from '../dash/types.js';
+import { HLSParser } from '../hls/HLSParser.js';
+import { SegmentTemplateInfo } from './types.js';
 
 type PlayerEventHook = () => void;
 type ErrorHook = (err: unknown) => void;
 type TimeUpdateHook = (time: number) => void;
+// type StreamType = 'dash' | 'hls';
 
 export class Player {
     private videoElement?: HTMLVideoElement;
@@ -46,12 +48,43 @@ export class Player {
         logger.info('[Player] Loading manifest:', manifestUrl);
 
         try {
-            const parser = new MPDParser();
-            const videoTracks = await parser.parseVideo(manifestUrl);
-            const audioTracks = await parser.parseAudio(manifestUrl);
-            const tracks: SegmentTemplateInfo[] = [...videoTracks, ...audioTracks];
+            let segments: SegmentTemplateInfo[] = [];
 
-            this.mediaSourceHandler = new MediaSourceHandler(this.videoElement, tracks);
+            if (manifestUrl.endsWith('.mpd')) {
+                // DASH
+                const parser = new MPDParser();
+                const videoTracks = await parser.parseVideo(manifestUrl);
+                const audioTracks = await parser.parseAudio(manifestUrl);
+                segments = [...videoTracks, ...audioTracks];
+            } else if (manifestUrl.endsWith('.m3u8')) {
+                // HLS
+                const parser = new HLSParser();
+                let mediaUrl = manifestUrl;
+
+                if (await parser.isMaster(manifestUrl)) {
+                    mediaUrl = await parser.parseMasterPlaylist(manifestUrl);
+                }
+
+                const track = await parser.parseMediaPlaylist(mediaUrl);
+
+                segments = [{
+                    baseURL: track.baseURL,
+                    representationID: 'hls-track',
+                    initialization: track.initSegment || '',
+                    media: '',
+                    startNumber: 0,
+                    timescale: 1,
+                    duration: 1,
+                    useTimeTemplate: false,
+                    mimeType: 'video/mp4', // For fMP4
+                    codecs: 'avc1.42E01E, mp4a.40.2',
+                    segments: track.segments
+                }];
+            } else {
+                throw new Error('Unsupported manifest format');
+            }
+
+            this.mediaSourceHandler = new MediaSourceHandler(this.videoElement, segments);
             await this.mediaSourceHandler.init();
 
             this.onReady?.();
