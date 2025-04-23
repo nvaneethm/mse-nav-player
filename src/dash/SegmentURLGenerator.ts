@@ -12,16 +12,17 @@ export class SegmentURLGenerator {
     this.representationID = info.representationID;
     this.initTemplate = info.initialization;
     this.mediaTemplate = info.media;
-    this.useTimeTemplate = info.useTimeTemplate ?? info.media.indexOf('$Time$') !== -1;  }
+    this.useTimeTemplate = info.useTimeTemplate ?? info.media.indexOf('$Time$') !== -1;
+  }
 
   getInitializationURL(): string {
     return this.resolveTemplate(this.initTemplate);
   }
 
   getMediaSegmentURL(index: number): string {
-    if (this.useTimeTemplate) {
-      const time = this.computeSegmentTime(index);
-      return this.resolveTemplate(this.mediaTemplate, undefined, time);
+    if (this.info.useTimeTemplate && this.info.timeline) {
+      const time = this.info.timeline[index];
+      return this.resolveTemplate(this.info.media, undefined, time);
     } else {
       const number = this.info.startNumber + index;
       return this.resolveTemplate(this.mediaTemplate, number);
