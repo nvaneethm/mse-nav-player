@@ -10,6 +10,8 @@ export interface SegmentTemplateInfo {
   mimeType?: string;
   codecs?: string;
   timeline?: number[];
+  resolution?: string;
+  bandwidth?: number;
 }
 
 export interface SegmentDownloadResult {
