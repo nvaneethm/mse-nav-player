@@ -1,97 +1,148 @@
+# 📼 mse-nav-player
 
+A lightweight, framework-agnostic JavaScript library for building custom DASH + MSE video players from scratch — perfect for learning, extending, or integrating with legacy and modern web platforms.
 
- # 📼 mse-nav-player
- 
- A lightweight, framework-agnostic JavaScript library for building custom DASH + MSE video players from scratch — perfect for learning, extending, or integrating with legacy and modern web platforms.
- 
- ---
- 
- ## 🔧 Features
- 
- - ✅ DASH `SegmentTemplate` support (`$Number$`, `$Time$`)
- - ✅ Generates segment URLs from MPD
- - ✅ Works with Media Source Extensions (MSE)
- - ✅ Supports legacy browsers (via ES5 build)
- - ✅ Tree-shakable ESModule build for modern frameworks
- - ✅ Written in TypeScript, published with full types
- - ✅ Hookable lifecycle methods (`onPlay`, `onError`, etc.)
- - ✅ Volume, mute, seek, and other player controls
- 
- ---
- 
- ## 📦 Installation
- 
- ```bash
- # Install via NPM
- npm install mse-nav-player
- ```
- 
- Or use the UMD version directly in your browser:
- 
- ```html
- <script src="https://cdn.jsdelivr.net/npm/mse-nav-player/dist/mse-nav-player.es5.js"></script>
- ```
- 
- ---
- 
- ## 📁 Usage
- 
-```ts
-import { Player } from 'mse-nav-player';
+---
 
-const player = new Player();
-player.attachVideoElement(document.getElementById('video')!);
+## 🔧 Features
 
-player.onReady = () => console.log('Player is ready');
-player.onError = err => console.error('Playback error', err);
+- ✅ DASH `SegmentTemplate` support (`$Number$`, `$Time$`)
+- ✅ Generates segment URLs from MPD
+- ✅ Works with Media Source Extensions (MSE)
+- ✅ Supports legacy browsers (via ES5 build)
+- ✅ Tree-shakable ESModule build for modern frameworks
+- ✅ Written in TypeScript, published with full types
+- ✅ Hookable lifecycle methods (`onPlay`, `onError`, etc.)
+- ✅ Volume, mute, seek, and other player controls
+- ✅ Resolution switching
+- ✅ Rendition awareness
+- ✅ Adaptive Bitrate toggle (stub for future)
 
-await player.load('https://your.cdn/path/to/manifest.mpd');
-player.play();
+---
+
+## 📦 Installation
+
+```bash
+# Install via NPM
+npm install mse-nav-player
 ```
- 
- ---
- 
- ### ✅ Example 2: In Browser (Legacy Compatible)
- 
+
+Or use the UMD version directly in your browser:
 
 ```html
-  <script>
-    const player = new MseNavPlayer.Player();
-    player.attachVideoElement(document.getElementById('video'));
-    player.load('https://cdn.bitmovin.com/content/assets/art-of-motion-dash-hls-progressive/mpds/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.mpd');
-  </script>
+<script src="https://cdn.jsdelivr.net/npm/mse-nav-player/dist/mse-nav-player.es5.js"></script>
 ```
- 
 
- 
- ## 📦 Build Setup (for Contributors)
- 
- ```bash
- # Install dependencies
- npm install
- 
- # Build for both modern (ES6) and legacy (ES5)
- npm run build
- 
- # Start local dev server
- npm run start
- 
- # Watch for changes and rebuild
- npm run watch
- ```
- 
- ---
+---
 
- ## ✅ TODO
-	•	Adaptive bitrate switching
-	•	Live/low latency stream support
-	•	Subtitle support (WebVTT)
-	•	Keyboard and remote control bindings
+## 📁 Usage
+
+```ts
+import { Player } from "mse-nav-player"
+
+const player = new Player()
+player.attachVideoElement(document.getElementById("video")!)
+
+player.onReady = () => console.log("Player is ready")
+player.onError = (err) => console.error("Playback error", err)
+
+await player.load("https://your.cdn/path/to/manifest.mpd")
+player.play()
+```
+
+---
+
+### ✅ Example 2: In Browser (Legacy Compatible)
+
+```html
+<video id="video" controls></video>
+<script src="https://cdn.jsdelivr.net/npm/mse-nav-player/dist/mse-nav-player.es5.js"></script>
+<script>
+  const player = new MseNavPlayer.Player()
+  player.attachVideoElement(document.getElementById("video"))
+  player.load(
+    "https://cdn.bitmovin.com/content/assets/art-of-motion-dash-hls-progressive/mpds/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.mpd"
+  )
+</script>
+```
+
+---
+
+## 📘 API Reference: `Player` Class
+
+### 🧱 Initialization
+
+```ts
+const player = new Player()
+player.attachVideoElement(videoElement)
+player.load("https://example.com/manifest.mpd")
+```
+
+---
+
+### ⚙️ Methods
+
+| Method                                        | Description                        |
+| --------------------------------------------- | ---------------------------------- |
+| `attachVideoElement(video: HTMLVideoElement)` | Binds the video element            |
+| `load(manifestUrl: string)`                   | Loads and parses the DASH manifest |
+| `play()` / `pause()`                          | Control playback                   |
+| `seekTo(time: number)`                        | Jump to a specific timestamp       |
+| `setVolume(number)` / `mute()` / `unmute()`   | Volume control                     |
+| `reset()` / `destroy()`                       | Clear/reset/detach logic           |
+| `getBitrate()`                                | Returns current bitrate            |
+| `getResolution()`                             | Returns active video resolution    |
+| `getAvailableRenditions()`                    | Lists all video renditions         |
+| `setRendition(res: string)`                   | Switch to a specific resolution    |
+| `setAdaptiveBitrate(enable: boolean)`         | Toggle ABR (stub for now)          |
+
+---
+
+### 🎯 Event Hooks
+
+```ts
+player.onPlay = () => console.log("Playing")
+player.onPause = () => console.log("Paused")
+player.onEnded = () => console.log("Ended")
+player.onReady = () => console.log("Ready")
+player.onError = (err) => console.error(err)
+player.onBuffering = () => console.log("Buffering")
+player.onTimeUpdate = (t) => console.log("Time:", t)
+```
+
+---
+
+## 📦 Build Setup (for Contributors)
+
+```bash
+# Install dependencies
+npm install
+
+# Build for both modern (ES6) and legacy (ES5)
+npm run build
+
+# Watch for changes and rebuild
+npm run watch
+```
+
+---
+
+## ✅ TODO
+
+- Adaptive bitrate switching
+- Live/low latency stream support
+- Subtitle support (WebVTT)
+- Keyboard and remote control bindings
+- HLS Support
+
+---
 
 ## 🐞 Fixes
-	•	`$Time$` bug fixes
 
- 
- ## 📃 License
- 
- MIT © [Navaneeth M](https://github.com/nvaneethm)
+- `$Time$` bug fixes
+
+---
+
+## 📃 License
+
+MIT © [Navaneeth M](https://github.com/nvaneethm)
