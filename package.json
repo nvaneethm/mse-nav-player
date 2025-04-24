@@ -30,6 +30,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "core-js": "^3.41.0",
     "es6-promise": "^4.2.8"
   }
 }
