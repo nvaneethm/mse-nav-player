@@ -117,6 +117,26 @@ export class Player {
         logger.info('[Player] Reset complete');
     }
 
+    getBitrate(): number {
+        return this.mediaSourceHandler?.getCurrentBitrate() ?? 0;
+    }
+
+    getResolution(): string {
+        return this.mediaSourceHandler?.getCurrentResolution() ?? '0x0';
+    }
+
+    getAvailableRenditions(): { resolution: string; bitrate: number }[] {
+        return this.mediaSourceHandler?.getAvailableRenditions() ?? [];
+    }
+
+    setRendition(resolution: string): void {
+        this.mediaSourceHandler?.setRendition(resolution);
+    }
+
+    setAdaptiveBitrate(enable: boolean): void {
+        this.mediaSourceHandler?.setAdaptiveBitrate(enable);
+    }
+
     destroy() {
         this.reset();
         this.videoElement = undefined;
