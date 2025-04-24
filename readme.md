@@ -87,6 +87,10 @@ player.play();
 	•	Live/low latency stream support
 	•	Subtitle support (WebVTT)
 	•	Keyboard and remote control bindings
+
+## 🐞 Fixes
+	•	`$Time$` bug fixes
+
  
  ## 📃 License
  
