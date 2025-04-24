@@ -6,17 +6,23 @@ export class SegmentURLGenerator {
   private initTemplate: string;
   private mediaTemplate: string;
   private useTimeTemplate: boolean;
+  private info: SegmentTemplateInfo;
 
-  constructor(private info: SegmentTemplateInfo) {
-    this.baseURL = info.baseURL || '';
-    this.representationID = info.representationID;
-    this.initTemplate = info.initialization;
-    this.mediaTemplate = info.media;
-    this.useTimeTemplate = info.useTimeTemplate ?? info.media.indexOf('$Time$') !== -1;
+  constructor(private SegmentInfo: SegmentTemplateInfo) {
+    this.info = SegmentInfo
+    this.baseURL = SegmentInfo.baseURL || '';
+    this.representationID = SegmentInfo.representationID;
+    this.initTemplate = SegmentInfo.initialization;
+    this.mediaTemplate = SegmentInfo.media;
+    this.useTimeTemplate = SegmentInfo.useTimeTemplate ?? SegmentInfo.media.indexOf('$Time$') !== -1;
   }
 
   getInitializationURL(): string {
     return this.resolveTemplate(this.initTemplate);
+  }
+
+  getInfo(): SegmentTemplateInfo {
+    return this.info;
   }
 
   getMediaSegmentURL(index: number): string {
