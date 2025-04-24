@@ -38,6 +38,8 @@
   <script>
     const player = new MseNavPlayer.Player();
     player.attachVideoElement(document.getElementById('video'));
-    player.load('https://cdn.bitmovin.com/content/assets/art-of-motion-dash-hls-progressive/mpds/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.mpd');
+    player.load('https://bitmovin-a.akamaihd.net/content/sintel/sintel.mpd');
+    setTimeout(()=>console.log("## renditions", player.getAvailableRenditions()), 5000)
+    
   </script>
 </html>
