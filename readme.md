@@ -6,7 +6,7 @@ A lightweight, framework-agnostic JavaScript library for building custom DASH + 
 
 This project uses npm versioning (`npm version patch`) for managing releases. Each patch release increments the last number in the version (e.g., 1.0.x).
 
-For detailed changes in each version, see the [CHANGELOG.md](CHANGELOG.md).
+For detailed changes in each version, see the [CHANGELOG.md](https://github.com/nvaneethm/mse-nav-player/blob/master/CHANGELOG.md).
 
 ## Features
 
