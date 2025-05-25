@@ -1,6 +1,7 @@
 import { SegmentTemplateInfo } from './types';
 
 export class SegmentURLGenerator {
+  public segmentDurationSeconds: number;
   private baseURL: string;
   private representationID: string;
   private initTemplate: string;
@@ -10,6 +11,7 @@ export class SegmentURLGenerator {
 
   constructor(private SegmentInfo: SegmentTemplateInfo) {
     this.info = SegmentInfo
+    this.segmentDurationSeconds = SegmentInfo.duration / SegmentInfo.timescale
     this.baseURL = SegmentInfo.baseURL || '';
     this.representationID = SegmentInfo.representationID;
     this.initTemplate = SegmentInfo.initialization;

@@ -8,6 +8,8 @@ import { MPDParser } from '../dash/MPDParser.js';
 import { MediaSourceHandler } from './MediaSourceHandler.js';
 import { logger } from '../utils/Logger.js';
 import { SegmentTemplateInfo } from '../dash/types.js';
+import { SegmentFetcher } from '../dash/SegmentFetcher.js';
+import { SegmentURLGenerator } from '../dash/SegmentURLGenerator.js';
 
 /**
  * Callback type for general player events.
@@ -30,6 +32,8 @@ export class Player {
     private videoElement?: HTMLVideoElement;
     private mediaSourceHandler?: MediaSourceHandler;
     private manifestUrl?: string;
+    private mediaSource?: MediaSource;
+    private segmentFetcher?: SegmentFetcher;
 
     /**
     * Hook called when playback starts.
@@ -97,11 +101,38 @@ export class Player {
 
         try {
             const parser = new MPDParser();
-            const videoTracks = await parser.parseVideo(manifestUrl);
-            const audioTracks = await parser.parseAudio(manifestUrl);
-            const tracks: SegmentTemplateInfo[] = [...videoTracks, ...audioTracks];
+            const { videoTracks, audioTracks } = await parser.parse(manifestUrl);
 
-            this.mediaSourceHandler = new MediaSourceHandler(this.videoElement, tracks);
+            this.mediaSource = new MediaSource();
+            this.segmentFetcher = new SegmentFetcher();
+
+            this.videoElement.src = URL.createObjectURL(this.mediaSource);
+
+            this.mediaSourceHandler = new MediaSourceHandler(this.videoElement, this.mediaSource, this.segmentFetcher);
+            
+            // Add video tracks to MediaSourceHandler
+            for (const track of videoTracks) {
+                const generator = new SegmentURLGenerator(track);
+                this.mediaSourceHandler.addVideoTrack(track.resolution!, {
+                    type: 'video',
+                    mimeType: `${track.mimeType}; codecs="${track.codecs}"`,
+                    generator,
+                    segmentIndex: 0
+                });
+            }
+
+            // Add audio track if available
+            if (audioTracks.length > 0) {
+                const audioTrack = audioTracks[0]; // Use first audio track
+                const generator = new SegmentURLGenerator(audioTrack);
+                this.mediaSourceHandler.addAudioTrack({
+                    type: 'audio',
+                    mimeType: `${audioTrack.mimeType}; codecs="${audioTrack.codecs}"`,
+                    generator,
+                    segmentIndex: 0
+                });
+            }
+
             await this.mediaSourceHandler.init();
 
             this.onReady?.();
@@ -184,6 +215,8 @@ export class Player {
         }
 
         this.mediaSourceHandler = undefined;
+        this.mediaSource = undefined;
+        this.segmentFetcher = undefined;
         this.manifestUrl = undefined;
 
         logger.info('[Player] Reset complete');

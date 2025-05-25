@@ -1,45 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MSE DASH Player</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background-color: #121212;
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2rem;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MSE DASH Player</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        background-color: #121212;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 2rem;
+      }
 
-    video {
-      width: 640px;
-      height: 360px;
-      background-color: black;
-    }
+      video {
+        display: block;
+        /* background: black; */
+        width: 100%;
+        height: auto;
+      }
 
-    button {
-      margin-top: 1rem;
-      padding: 10px 20px;
-      font-size: 16px;
-    }
-  </style>
-</head>
-<body>
-  <h1>DASH / MSE Player</h1>
-  <video id="video" controls></video>
-  <br />
-  <button id="playButton">Play Video</button>
+      button,
+      select {
+        margin-top: 1rem;
+        padding: 10px 20px;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>DASH / MSE Player</h1>
+    <video id="video" controls></video>
+    <br />
+    <button id="playButton">Play Video</button>
 
-  <script src="../dist/mse-nav-player.es5.js"></script>
-  <script>
-    const player = new MseNavPlayer.Player();
-    player.attachVideoElement(document.getElementById('video'));
-    player.load('https://bitmovin-a.akamaihd.net/content/sintel/sintel.mpd');
-    setTimeout(()=>console.log("## renditions", player.getAvailableRenditions()), 5000)
-    
-  </script>
+    <!-- Dropdown for renditions -->
+    <select id="renditionSelector" style="display: none">
+      <option disabled selected>Choose Rendition</option>
+    </select>
+
+    <p
+      id="currentRenditionLabel"
+      style="margin-top: 1rem; font-weight: bold"
+    ></p>
+
+    <script src="../dist/mse-nav-player.es5.js"></script>
+    <script>
+      const player = new MseNavPlayer.Player()
+      const videoEl = document.getElementById("video")
+      const playBtn = document.getElementById("playButton")
+      const renditionSelector = document.getElementById("renditionSelector")
+
+      player.attachVideoElement(videoEl)
+
+      playBtn.addEventListener("click", () => {
+        player.load("https://bitmovin-a.akamaihd.net/content/sintel/sintel.mpd")
+
+        setTimeout(() => {
+          const renditions = player.getAvailableRenditions() // ['480p', '720p', '1080p']
+          if (renditions && renditions.length > 0) {
+            renditionSelector.style.display = "inline-block"
+            renditionSelector.innerHTML = `<option disabled selected>Select Rendition</option>`
+            renditions.forEach((res) => {
+              const option = document.createElement("option")
+              option.value = res.resolution
+              option.textContent = `${res.resolution} - ${res.bitrate}bps`
+              renditionSelector.appendChild(option)
+            })
+          }
+        }, 3000) // wait for manifest parsing
+      })
+
+      renditionSelector.addEventListener("change", (e) => {
+        const resolution = e.target.value
+        player.setRendition(resolution)
+        console.log("Switched to rendition:", resolution)
+      })
+
+      const currentLabel = document.getElementById("currentRenditionLabel")
+
+      // Poll and update current rendition every 2 seconds
+      setInterval(() => {
+        const currentRes = player.getCurrentRendition?.()
+        if (currentRes) {
+          currentLabel.textContent = `🔄 Currently Playing: ${currentRes}`
+        }
+      }, 2000)
+
+      // Also update immediately on dropdown change
+      renditionSelector.addEventListener("change", (e) => {
+        const resolution = e.target.value
+        player.setRendition(resolution)
+        currentLabel.textContent = `🔄 Switching to: ${resolution}`
+      })
+    </script>
+  </body>
 </html>

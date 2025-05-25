@@ -2,18 +2,20 @@ import { logger } from "../utils/Logger";
 import { SegmentTemplateInfo } from "./types";
 
 export class MPDParser {
-    async parse(url: string): Promise<SegmentTemplateInfo[]> {
-        const { videoTracks, audioTracks } = await this.parseAdaptationSets(url);
-        return [...videoTracks, ...audioTracks];
+    async parse(url: string): Promise<{
+        videoTracks: SegmentTemplateInfo[];
+        audioTracks: SegmentTemplateInfo[];
+    }> {
+        return this.parseAdaptationSets(url);
     }
 
     async parseVideo(url: string): Promise<SegmentTemplateInfo[]> {
-        const { videoTracks } = await this.parseAdaptationSets(url);
+        const { videoTracks } = await this.parse(url);
         return videoTracks;
     }
 
     async parseAudio(url: string): Promise<SegmentTemplateInfo[]> {
-        const { audioTracks } = await this.parseAdaptationSets(url);
+        const { audioTracks } = await this.parse(url);
         return audioTracks;
     }
 
