@@ -1,26 +1,28 @@
-# 📼 mse-nav-player
+# MSE Nav Player
 
 A lightweight, framework-agnostic JavaScript library for building custom DASH + MSE video players from scratch — perfect for learning, extending, or integrating with legacy and modern web platforms.
 
----
+## Versioning
 
-## 🔧 Features
+This project uses npm versioning (`npm version patch`) for managing releases. Each patch release increments the last number in the version (e.g., 1.0.x).
 
-- ✅ DASH `SegmentTemplate` support (`$Number$`, `$Time$`)
-- ✅ Generates segment URLs from MPD
-- ✅ Works with Media Source Extensions (MSE)
-- ✅ Supports legacy browsers (via ES5 build)
-- ✅ Tree-shakable ESModule build for modern frameworks
-- ✅ Written in TypeScript, published with full types
-- ✅ Hookable lifecycle methods (`onPlay`, `onError`, etc.)
-- ✅ Volume, mute, seek, and other player controls
-- ✅ Resolution switching
-- ✅ Rendition awareness
-- ✅ Adaptive Bitrate toggle (stub for future)
+For detailed changes in each version, see the [CHANGELOG.md](CHANGELOG.md).
 
----
+## Features
 
-## 📦 Installation
+- DASH `SegmentTemplate` support (`$Number$`, `$Time$`)
+- Generates segment URLs from MPD
+- Works with Media Source Extensions (MSE)
+- Supports legacy browsers (via ES5 build)
+- Tree-shakable ESModule build for modern frameworks
+- Written in TypeScript, published with full types
+- Hookable lifecycle methods (`onPlay`, `onError`, etc.)
+- Volume, mute, seek, and other player controls
+- Resolution switching
+- Rendition awareness
+- Adaptive Bitrate toggle (stub for future)
+
+## Installation
 
 ```bash
 # Install via NPM
@@ -33,9 +35,7 @@ Or use the UMD version directly in your browser:
 <script src="https://cdn.jsdelivr.net/npm/mse-nav-player/dist/mse-nav-player.es5.js"></script>
 ```
 
----
-
-## 📁 Usage
+## Usage
 
 ```ts
 import { Player } from "mse-nav-player"
@@ -50,9 +50,7 @@ await player.load("https://your.cdn/path/to/manifest.mpd")
 player.play()
 ```
 
----
-
-### ✅ Example 2: In Browser (Legacy Compatible)
+### Browser Example (Legacy Compatible)
 
 ```html
 <video id="video" controls></video>
@@ -66,11 +64,9 @@ player.play()
 </script>
 ```
 
----
+## API Reference: Player Class
 
-## 📘 API Reference: `Player` Class
-
-### 🧱 Initialization
+### Initialization
 
 ```ts
 const player = new Player()
@@ -78,9 +74,7 @@ player.attachVideoElement(videoElement)
 player.load("https://example.com/manifest.mpd")
 ```
 
----
-
-### ⚙️ Methods
+### Methods
 
 | Method                                        | Description                        |
 | --------------------------------------------- | ---------------------------------- |
@@ -96,9 +90,7 @@ player.load("https://example.com/manifest.mpd")
 | `setRendition(res: string)`                   | Switch to a specific resolution    |
 | `setAdaptiveBitrate(enable: boolean)`         | Toggle ABR (stub for now)          |
 
----
-
-### 🎯 Event Hooks
+### Event Hooks
 
 ```ts
 player.onPlay = () => console.log("Playing")
@@ -110,9 +102,7 @@ player.onBuffering = () => console.log("Buffering")
 player.onTimeUpdate = (t) => console.log("Time:", t)
 ```
 
----
-
-## 📦 Build Setup (for Contributors)
+## Development
 
 ```bash
 # Install dependencies
@@ -125,24 +115,6 @@ npm run build
 npm run watch
 ```
 
----
-
-## ✅ TODO
-
-- Adaptive bitrate switching
-- Live/low latency stream support
-- Subtitle support (WebVTT)
-- Keyboard and remote control bindings
-- HLS Support
-
----
-
-## 🐞 Fixes
-
-- `$Time$` bug fixes
-
----
-
-## 📃 License
+## License
 
 MIT © [Navaneeth M](https://github.com/nvaneethm)
