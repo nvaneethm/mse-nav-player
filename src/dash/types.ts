@@ -1,3 +1,5 @@
+import { TimelineModel, TimelineSegment } from '../types/timeline.js';
+
 export interface SegmentTemplateInfo {
   baseURL: string;
   representationID: string;
@@ -7,14 +9,17 @@ export interface SegmentTemplateInfo {
   timescale: number;
   duration: number;
   useTimeTemplate: boolean;
-  mimeType?: string;
-  codecs?: string;
+  mimeType: string;
+  codecs: string;
   timeline?: number[];
   resolution?: string;
-  bandwidth?: number;
+  bandwidth: number;
+  totalDuration?: number;
 }
 
 export interface SegmentDownloadResult {
   url: string;
   data: ArrayBuffer;
 }
+
+export { TimelineModel, TimelineSegment };
