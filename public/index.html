@@ -17,7 +17,6 @@
 
       video {
         display: block;
-        /* background: black; */
         width: 100%;
         height: auto;
       }
@@ -52,49 +51,72 @@
       const videoEl = document.getElementById("video")
       const playBtn = document.getElementById("playButton")
       const renditionSelector = document.getElementById("renditionSelector")
+      const currentLabel = document.getElementById("currentRenditionLabel")
 
       player.attachVideoElement(videoEl)
 
-      playBtn.addEventListener("click", () => {
-        player.load("https://bitmovin-a.akamaihd.net/content/sintel/sintel.mpd")
+      playBtn.addEventListener("click", async () => {
+        // Define content + ad segments
+        const segments = [
+          {
+            start: 0,
+            end: 10,
+            url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps_480x270_1500k/bbb_30fps_480x270_1500k_0.m4s",
+            type: "content",
+          },
+          {
+            start: 10,
+            end: 20,
+            url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps_480x270_1500k/bbb_30fps_480x270_1500k_1.m4s",
+            type: "ad",
+          },
+          {
+            start: 20,
+            end: 60,
+            url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps_480x270_1500k/bbb_30fps_480x270_1500k_2.m4s",
+            type: "content",
+          },
+        ]
 
-        setTimeout(() => {
-          const renditions = player.getAvailableRenditions() // ['480p', '720p', '1080p']
-          if (renditions && renditions.length > 0) {
-            renditionSelector.style.display = "inline-block"
-            renditionSelector.innerHTML = `<option disabled selected>Select Rendition</option>`
-            renditions.forEach((res) => {
-              const option = document.createElement("option")
-              option.value = res.resolution
-              option.textContent = `${res.resolution} - ${res.bitrate}bps`
-              renditionSelector.appendChild(option)
-            })
-          }
-        }, 3000) // wait for manifest parsing
+        try {
+          // First load the manifest to initialize MediaSourceHandler
+          await player.load("https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd")
+
+          // Then create and set the timeline
+          const timelineModel = new MseNavPlayer.TimelineModel(segments)
+          player.setTimeline(timelineModel)
+
+          // Update rendition selector after a delay
+          setTimeout(() => {
+            const renditions = player.getAvailableRenditions()
+            if (renditions && renditions.length > 0) {
+              renditionSelector.style.display = "inline-block"
+              renditionSelector.innerHTML = `<option disabled selected>Select Rendition</option>`
+              renditions.forEach((res) => {
+                const option = document.createElement("option")
+                option.value = res.resolution
+                option.textContent = `${res.resolution} - ${res.bitrate}bps`
+                renditionSelector.appendChild(option)
+              })
+            }
+          }, 3000)
+        } catch (error) {
+          console.error('Error initializing player:', error)
+        }
       })
 
       renditionSelector.addEventListener("change", (e) => {
         const resolution = e.target.value
         player.setRendition(resolution)
-        console.log("Switched to rendition:", resolution)
+        currentLabel.textContent = `🔄 Switching to: ${resolution}`
       })
 
-      const currentLabel = document.getElementById("currentRenditionLabel")
-
-      // Poll and update current rendition every 2 seconds
       setInterval(() => {
         const currentRes = player.getCurrentRendition?.()
         if (currentRes) {
           currentLabel.textContent = `🔄 Currently Playing: ${currentRes}`
         }
       }, 2000)
-
-      // Also update immediately on dropdown change
-      renditionSelector.addEventListener("change", (e) => {
-        const resolution = e.target.value
-        player.setRendition(resolution)
-        currentLabel.textContent = `🔄 Switching to: ${resolution}`
-      })
     </script>
   </body>
 </html>
