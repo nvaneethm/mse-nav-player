@@ -1,0 +1,20 @@
+# Development tools
+.claude/
+.gitnexus/
+AGENTS.md
+CLAUDE.md
+
+# Source (dist is published)
+src/
+babel.config.json
+rollup.config.mjs
+tsconfig.json
+typedoc.json
+vitest.config.ts
+
+# Docs (too large)
+docs/
+
+# Dev artifacts
+*.map
+public/
