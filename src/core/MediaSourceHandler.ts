@@ -124,22 +124,58 @@ export class MediaSourceHandler {
     if (!track || this.currentVideoTrack === track) return;
 
     logger.info(`[MediaSourceHandler] Switching to resolution: ${resolution}`);
-    this.currentVideoTrack = track;
 
+    const prevTrack = this.currentVideoTrack;
+
+    // Detach updateend listener from the outgoing track
+    if (prevTrack?.sourceBuffer && prevTrack._onUpdateEnd) {
+      prevTrack.sourceBuffer.removeEventListener('updateend', prevTrack._onUpdateEnd);
+      prevTrack._onUpdateEnd = undefined;
+    }
+
+    // Reuse the single video SourceBuffer — never call addSourceBuffer more than once
+    // per video track type to avoid QuotaExceededError (browsers cap at 2 SourceBuffers)
     if (!track.sourceBuffer) {
-      track.sourceBuffer = this.mediaSource.addSourceBuffer(track.mimeType);
-      track.sourceBuffer.addEventListener('error', (e) => {
-        logger.error(`[MediaSourceHandler] SourceBuffer error for ${track.type}:`, e);
-        track.ended = true;
-        this.tryEndOfStream();
+      if (prevTrack?.sourceBuffer) {
+        track.sourceBuffer = prevTrack.sourceBuffer;
+        prevTrack.sourceBuffer = undefined;
+      } else {
+        track.sourceBuffer = this.mediaSource.addSourceBuffer(track.mimeType);
+        track.sourceBuffer.addEventListener('error', (e) => {
+          logger.error(`[MediaSourceHandler] SourceBuffer error for ${track.type}:`, e);
+          track.ended = true;
+          this.tryEndOfStream();
+        });
+      }
+    }
+
+    this.currentVideoTrack = track;
+    track.ended = false;
+
+    const sb = track.sourceBuffer;
+
+    // Flush buffered content from the previous rendition
+    if (sb.buffered.length > 0) {
+      await new Promise<void>((resolve) => {
+        const done = () => { sb.removeEventListener('updateend', done); resolve(); };
+        sb.addEventListener('updateend', done);
+        sb.remove(0, Infinity);
+      });
+    }
+
+    // Wait if a previous operation is still in progress
+    if (sb.updating) {
+      await new Promise<void>((resolve) => {
+        const done = () => { sb.removeEventListener('updateend', done); resolve(); };
+        sb.addEventListener('updateend', done);
       });
     }
 
     const initSeg = await this.segmentFetcher.fetchSegment(track.generator.getInitializationURL());
-    track.sourceBuffer.appendBuffer(initSeg.data);
+    sb.appendBuffer(initSeg.data);
 
     const onUpdateEnd = () => this.appendNextSegment(track);
-    track.sourceBuffer.addEventListener("updateend", onUpdateEnd);
+    sb.addEventListener("updateend", onUpdateEnd);
     track._onUpdateEnd = onUpdateEnd;
 
     track.segmentIndex = Math.floor(this.videoEl.currentTime / track.generator.segmentDurationSeconds);
