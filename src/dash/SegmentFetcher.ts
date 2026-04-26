@@ -68,12 +68,17 @@ export class SegmentFetcher {
                         );
                     }
 
+                    const fetchStart = performance.now();
                     const buffer = await response.arrayBuffer();
-                    const result = { url, data: buffer };
+                    const durationMs = performance.now() - fetchStart;
+                    const downloadBandwidth = durationMs > 0
+                        ? (buffer.byteLength * 8) / (durationMs / 1000)
+                        : undefined;
+                    const result: SegmentDownloadResult = { url, data: buffer, downloadBandwidth };
 
-                    // Cache the result
+                    // Cache the result (without bandwidth so cache hits don't skew estimates)
                     if (this.cacheEnabled) {
-                        this.cache.set(url, result);
+                        this.cache.set(url, { url, data: buffer });
                     }
 
                     return result;
@@ -127,7 +132,7 @@ export class SegmentFetcher {
 
     public destroy(): void {
         // Cancel all in-flight requests
-        for (const [url, controller] of this.inFlightRequests) {
+        for (const [, controller] of this.inFlightRequests) {
             controller.abort();
         }
         this.inFlightRequests.clear();

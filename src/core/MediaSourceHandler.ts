@@ -6,6 +6,9 @@ import { AD_EVENTS, AD_LOG_MESSAGES } from "../ads/constants";
 import { TimelineModel } from "./TimelineModel";
 import { EventBus } from "../events/EventBus";
 import { Logger } from "../utils/Logger";
+import { AbrController } from "../abr/AbrController";
+import { TextTrackHandler } from "./TextTrackHandler";
+import { SegmentTemplateInfo } from "../dash/types";
 
 interface TrackBuffer {
   type: 'video' | 'audio';
@@ -60,6 +63,10 @@ export class MediaSourceHandler {
   private readonly RETRY_DELAY = 1000;
   private adPlaying = false;
   private pendingTimeouts: Set<ReturnType<typeof setTimeout>> = new Set();
+  private abrController: AbrController | null = null;
+  private textTrackHandler: TextTrackHandler | null = null;
+  private isLive = false;
+  private isSwitchingRendition = false;
 
   constructor(videoEl: HTMLVideoElement, mediaSource: MediaSource, fetcher: SegmentFetcher) {
     this.videoEl = videoEl;
@@ -94,6 +101,8 @@ export class MediaSourceHandler {
     if (this.audioTrack?.sourceBuffer) {
       this.audioTrack.sourceBuffer.removeEventListener("updateend", () => this.appendNextSegment(this.audioTrack!));
     }
+
+    this.textTrackHandler?.destroy();
   }
 
   addVideoTrack(res: string, track: TrackBuffer) {
@@ -122,30 +131,82 @@ export class MediaSourceHandler {
   async setRendition(resolution: string) {
     const track = this.videoTrackMap[resolution];
     if (!track || this.currentVideoTrack === track) return;
+    if (this.isSwitchingRendition) return; // drop concurrent switch requests
 
+    this.isSwitchingRendition = true;
     logger.info(`[MediaSourceHandler] Switching to resolution: ${resolution}`);
-    this.currentVideoTrack = track;
 
+    const prevTrack = this.currentVideoTrack;
+
+    // Detach updateend listener from the outgoing track
+    if (prevTrack?.sourceBuffer && prevTrack._onUpdateEnd) {
+      prevTrack.sourceBuffer.removeEventListener('updateend', prevTrack._onUpdateEnd);
+      prevTrack._onUpdateEnd = undefined;
+    }
+
+    // Reuse the single video SourceBuffer — never call addSourceBuffer more than once
+    // per video track type to avoid QuotaExceededError (browsers cap at 2 SourceBuffers)
     if (!track.sourceBuffer) {
-      track.sourceBuffer = this.mediaSource.addSourceBuffer(track.mimeType);
-      track.sourceBuffer.addEventListener('error', (e) => {
-        logger.error(`[MediaSourceHandler] SourceBuffer error for ${track.type}:`, e);
-        track.ended = true;
-        this.tryEndOfStream();
+      if (prevTrack?.sourceBuffer) {
+        track.sourceBuffer = prevTrack.sourceBuffer;
+        prevTrack.sourceBuffer = undefined;
+      } else {
+        track.sourceBuffer = this.mediaSource.addSourceBuffer(track.mimeType);
+        track.sourceBuffer.addEventListener('error', (e) => {
+          logger.error(`[MediaSourceHandler] SourceBuffer error for ${track.type}:`, e);
+          track.ended = true;
+          this.tryEndOfStream();
+        });
+      }
+    }
+
+    this.currentVideoTrack = track;
+    track.ended = false;
+    this.abrController?.setCurrentResolution(resolution);
+
+    const sb = track.sourceBuffer;
+
+    // Always wait for any in-progress operation before touching the SourceBuffer.
+    // An ABR switch can arrive mid-append, so we must drain first.
+    if (sb.updating) {
+      await new Promise<void>((resolve) => {
+        const done = () => { sb.removeEventListener('updateend', done); resolve(); };
+        sb.addEventListener('updateend', done);
+      });
+    }
+
+    // Flush buffered content from the previous rendition
+    if (sb.buffered.length > 0) {
+      await new Promise<void>((resolve) => {
+        const done = () => { sb.removeEventListener('updateend', done); resolve(); };
+        sb.addEventListener('updateend', done);
+        sb.remove(0, Infinity);
+      });
+    }
+
+    // Guard: check once more after the async remove in case another op sneaked in
+    if (sb.updating) {
+      await new Promise<void>((resolve) => {
+        const done = () => { sb.removeEventListener('updateend', done); resolve(); };
+        sb.addEventListener('updateend', done);
       });
     }
 
     const initSeg = await this.segmentFetcher.fetchSegment(track.generator.getInitializationURL());
-    track.sourceBuffer.appendBuffer(initSeg.data);
+    sb.appendBuffer(initSeg.data);
 
     const onUpdateEnd = () => this.appendNextSegment(track);
-    track.sourceBuffer.addEventListener("updateend", onUpdateEnd);
+    sb.addEventListener("updateend", onUpdateEnd);
     track._onUpdateEnd = onUpdateEnd;
 
     track.segmentIndex = Math.floor(this.videoEl.currentTime / track.generator.segmentDurationSeconds);
     this.videoEl.currentTime = track.segmentIndex * track.generator.segmentDurationSeconds;
-    this.videoEl.play();
 
+    // Switch complete — allow appendNextSegment to run again before play() so
+    // the updateend from the init-segment append can trigger the first media segment.
+    this.isSwitchingRendition = false;
+
+    this.videoEl.play();
     this.appendNextSegment(track);
 
     if (this.audioTrack && !this.audioTrack.sourceBuffer) {
@@ -159,8 +220,8 @@ export class MediaSourceHandler {
   }
 
   private async appendNextSegment(track: TrackBuffer, retryCount = 0): Promise<void> {
-    if (this.isDestroyed || this.adPlaying || track.ended) {
-      logger.info(`[appendNextSegment] Skipped: ad is playing, handler destroyed, or track ended`);
+    if (this.isDestroyed || this.adPlaying || track.ended || this.isSwitchingRendition) {
+      logger.info(`[appendNextSegment] Skipped: ad is playing, handler destroyed, track ended, or rendition switch in progress`);
       return;
     }
 
@@ -206,8 +267,33 @@ export class MediaSourceHandler {
 
       if (this.isDestroyed) return;
 
+      // Re-check updating: a queued remove from handleSeeking may have started
+      // between the awaited updateend resolving and this line executing.
+      // _onUpdateEnd will re-trigger appendNextSegment when the buffer is free.
+      if (track.sourceBuffer.updating) return;
+
+      // Snapshot bufferAhead NOW, before appendBuffer makes updating=true and
+      // before the buffered ranges update (they don't update until updateend).
+      let bufferAheadSnapshot = 0;
+      if (track.sourceBuffer.buffered.length > 0) {
+        const bufferedEnd = track.sourceBuffer.buffered.end(track.sourceBuffer.buffered.length - 1);
+        bufferAheadSnapshot = Math.max(0, bufferedEnd - this.videoEl.currentTime);
+      }
+
       track.sourceBuffer.appendBuffer(segment.data);
       track.segmentIndex += 1;
+
+      // Feed ABR controller with this segment's download metrics
+      if (track.type === 'video' && this.abrController && segment.downloadBandwidth) {
+        this.abrController.recordSample(segment.downloadBandwidth, bufferAheadSnapshot);
+
+        const candidate = this.abrController.selectRendition(this.getAvailableRenditions());
+        if (candidate && candidate !== this.currentVideoTrack?.generator.getInfo().resolution) {
+          logger.info(`[MediaSourceHandler] ABR switch → ${candidate}`);
+          this.setRendition(candidate);
+        }
+      }
+
       // Do NOT schedule next append here; rely on updateend event
     } catch (err) {
       if (err instanceof SegmentFetchError) {
@@ -241,6 +327,12 @@ export class MediaSourceHandler {
   }
 
   private tryEndOfStream() {
+    // For live streams, segments running out just means we're at the live edge.
+    // The ManifestRefresher will append new segments; don't signal EOS.
+    if (this.isLive) {
+      logger.debug('[MediaSourceHandler] Live stream at edge — waiting for manifest refresh');
+      return;
+    }
     const allEnded = [this.currentVideoTrack, this.audioTrack]
       .filter(Boolean)
       .every(track => track!.ended);
@@ -280,7 +372,35 @@ export class MediaSourceHandler {
     }
   }
 
+  setAbrController(controller: AbrController): void {
+    this.abrController = controller;
+  }
+
+  setLive(isLive: boolean): void {
+    this.isLive = isLive;
+  }
+
+  addTextTrack(info: SegmentTemplateInfo): void {
+    if (!this.textTrackHandler) {
+      this.textTrackHandler = new TextTrackHandler(this.videoEl, this.segmentFetcher);
+    }
+    this.textTrackHandler.addTrack(info);
+  }
+
+  async enableTextTrack(language: string): Promise<void> {
+    await this.textTrackHandler?.enable(language);
+  }
+
+  disableTextTrack(): void {
+    this.textTrackHandler?.disable();
+  }
+
+  getTextTracks(): { language: string; role?: string }[] {
+    return this.textTrackHandler?.getAvailableTracks() ?? [];
+  }
+
   setAdaptiveBitrate(enable: boolean) {
+    this.abrController?.setEnabled(enable);
     logger.info(`[MediaSourceHandler] ABR ${enable ? "enabled" : "disabled"}`);
   }
 

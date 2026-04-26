@@ -1,5 +1,6 @@
 import { logger } from "../utils/Logger";
 import { SegmentTemplateInfo } from "./types";
+import { parseLiveAttributes } from "./ManifestRefresher";
 
 export class MPDParseError extends Error {
     constructor(
@@ -19,6 +20,11 @@ export class MPDParser {
     async parse(url: string): Promise<{
         videoTracks: SegmentTemplateInfo[];
         audioTracks: SegmentTemplateInfo[];
+        textTracks: SegmentTemplateInfo[];
+        isLive: boolean;
+        minimumUpdatePeriod?: number;
+        availabilityStartTime?: Date;
+        timeShiftBufferDepth?: number;
     }> {
         return this.parseAdaptationSets(url);
     }
@@ -36,6 +42,11 @@ export class MPDParser {
     private async parseAdaptationSets(url: string): Promise<{
         videoTracks: SegmentTemplateInfo[];
         audioTracks: SegmentTemplateInfo[];
+        textTracks: SegmentTemplateInfo[];
+        isLive: boolean;
+        minimumUpdatePeriod?: number;
+        availabilityStartTime?: Date;
+        timeShiftBufferDepth?: number;
     }> {
         logger.info('[MPDParser] Fetching manifest:', url);
 
@@ -81,7 +92,10 @@ export class MPDParser {
                 throw new MPDParseError('Missing MPD root element', url);
             }
 
-            // Parse mediaPresentationDuration (e.g., PT634.566S)
+            // Parse live / VOD attributes from MPD root
+            const liveAttrs = parseLiveAttributes(mpd);
+
+            // Parse mediaPresentationDuration (VOD only; absent for live)
             let totalDuration = 0;
             const durationStr = mpd.getAttribute('mediaPresentationDuration');
             if (durationStr) {
@@ -102,6 +116,7 @@ export class MPDParser {
 
             const videoTracks: SegmentTemplateInfo[] = [];
             const audioTracks: SegmentTemplateInfo[] = [];
+            const textTracks: SegmentTemplateInfo[] = [];
 
             for (const set of adaptationSets) {
                 const representations = Array.from(set.querySelectorAll('Representation'));
@@ -141,9 +156,18 @@ export class MPDParser {
                             totalDuration
                         );
 
-                        if (mimeType.includes('audio')) {
+                        const isText = this.isTextTrack(mimeType, codecs, set);
+                        if (isText) {
+                            info.trackType = 'text';
+                            info.language = set.getAttribute('lang') || representation.getAttribute('lang') || undefined;
+                            info.role = set.querySelector('Role')?.getAttribute('value') || undefined;
+                            textTracks.push(info);
+                        } else if (mimeType.includes('audio')) {
+                            info.trackType = 'audio';
+                            info.language = set.getAttribute('lang') || undefined;
                             audioTracks.push(info);
                         } else if (mimeType.includes('video')) {
+                            info.trackType = 'video';
                             videoTracks.push(info);
                         }
                     } catch (err) {
@@ -159,8 +183,10 @@ export class MPDParser {
 
             logger.debug('[MPDParser] Parsed videoTracks:', videoTracks);
             logger.debug('[MPDParser] Parsed audioTracks:', audioTracks);
+            logger.debug('[MPDParser] Parsed textTracks:', textTracks);
+            logger.debug('[MPDParser] Live:', liveAttrs.isLive);
 
-            return { videoTracks, audioTracks };
+            return { videoTracks, audioTracks, textTracks, ...liveAttrs };
         } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') {
                 throw new MPDParseError('Manifest fetch timeout', url);
@@ -170,6 +196,16 @@ export class MPDParser {
             }
             throw new MPDParseError('Failed to parse MPD', url, err);
         }
+    }
+
+    private isTextTrack(mimeType: string, codecs: string, set: Element): boolean {
+        if (mimeType.includes('text') || mimeType.includes('ttml') || mimeType.includes('vtt')) return true;
+        if (codecs.includes('stpp') || codecs.includes('wvtt')) return true;
+        const contentType = set.querySelector('ContentComponent')?.getAttribute('contentType');
+        if (contentType === 'text') return true;
+        // application/mp4 with TTML/WebVTT codecs is text
+        if (mimeType === 'application/mp4' && (codecs.includes('stpp') || codecs.includes('wvtt'))) return true;
+        return false;
     }
 
     private getMimeType(representation: Element, set: Element): string {
