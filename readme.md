@@ -1,35 +1,51 @@
 # MSE Nav Player
 
+[![CI](https://github.com/nvaneethm/mse-nav-player/actions/workflows/ci.yml/badge.svg)](https://github.com/nvaneethm/mse-nav-player/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/mse-nav-player.svg)](https://www.npmjs.com/package/mse-nav-player)
+[![npm downloads](https://img.shields.io/npm/dm/mse-nav-player.svg)](https://www.npmjs.com/package/mse-nav-player)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**Browser Support:**
+[![Chrome](https://img.shields.io/badge/Chrome-31%2B-brightgreen?logo=googlechrome&logoColor=white)](https://caniuse.com/mediasource)
+[![Firefox](https://img.shields.io/badge/Firefox-42%2B-brightgreen?logo=firefox&logoColor=white)](https://caniuse.com/mediasource)
+[![Safari](https://img.shields.io/badge/Safari-8%2B-brightgreen?logo=safari&logoColor=white)](https://caniuse.com/mediasource)
+[![Edge](https://img.shields.io/badge/Edge-12%2B-brightgreen?logo=microsoftedge&logoColor=white)](https://caniuse.com/mediasource)
+
+**Smart TV / Embedded:**
+[![Tizen](https://img.shields.io/badge/Samsung%20Tizen-2.4%2B-blue?logo=samsung&logoColor=white)](https://developer.samsung.com/smarttv/develop/specifications/web-engine-specifications.html)
+[![WebOS](https://img.shields.io/badge/LG%20WebOS-3.0%2B-red?logoColor=white)](https://webostv.developer.lge.com/develop/specifications/web-engine)
+[![AndroidTV](https://img.shields.io/badge/Android%20TV-5.0%2B-brightgreen?logo=android&logoColor=white)](https://developer.android.com/training/tv)
+[![HbbTV](https://img.shields.io/badge/HbbTV-1.4%2B-orange?logoColor=white)](https://www.hbbtv.org/)
+
 A lightweight, framework-agnostic JavaScript library for building custom DASH + MSE video players from scratch — perfect for learning, extending, or integrating with legacy and modern web platforms.
 
 ## Versioning
 
-This project uses npm versioning (`npm version patch`) for managing releases. Each patch release increments the last number in the version (e.g., 1.0.x).
+This project uses npm versioning (`npm version patch`) for managing releases.
 
 For detailed changes in each version, see the [CHANGELOG.md](https://github.com/nvaneethm/mse-nav-player/blob/master/CHANGELOG.md).
 
 ## Features
 
 - DASH `SegmentTemplate` support (`$Number$`, `$Time$`)
-- Generates segment URLs from MPD
+- Hybrid Adaptive Bitrate (ABR) — dual EWMA bandwidth estimator with switch-up cooldown
+- Subtitles & Captions — WebVTT, TTML, and segmented MP4 text tracks via native TextTrack API
+- Live DASH — manifest polling, DVR window, live edge seeking
 - Works with Media Source Extensions (MSE)
-- Supports legacy browsers (via ES5 build)
+- Supports legacy browsers and Smart TVs (Chrome 31+, Tizen 2.4+, WebOS 3.0+, Android TV 5.0+) via ES5 build
 - Tree-shakable ESModule build for modern frameworks
 - Written in TypeScript, published with full types
 - Hookable lifecycle methods (`onPlay`, `onError`, etc.)
 - Volume, mute, seek, and other player controls
-- Resolution switching
-- Rendition awareness
-- Adaptive Bitrate toggle (stub for future)
+- Resolution switching with manual/auto (ABR) modes
 
 ## Installation
 
 ```bash
-# Install via NPM
 npm install mse-nav-player
 ```
 
-Or use the UMD version directly in your browser:
+Or use directly in the browser:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/mse-nav-player/dist/mse-nav-player.es5.js"></script>
@@ -58,9 +74,7 @@ player.play()
 <script>
   const player = new MseNavPlayer.Player()
   player.attachVideoElement(document.getElementById("video"))
-  player.load(
-    "https://cdn.bitmovin.com/content/assets/art-of-motion-dash-hls-progressive/mpds/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.mpd"
-  )
+  player.load("https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd")
 </script>
 ```
 
@@ -76,19 +90,25 @@ player.load("https://example.com/manifest.mpd")
 
 ### Methods
 
-| Method                                        | Description                        |
-| --------------------------------------------- | ---------------------------------- |
-| `attachVideoElement(video: HTMLVideoElement)` | Binds the video element            |
-| `load(manifestUrl: string)`                   | Loads and parses the DASH manifest |
-| `play()` / `pause()`                          | Control playback                   |
-| `seekTo(time: number)`                        | Jump to a specific timestamp       |
-| `setVolume(number)` / `mute()` / `unmute()`   | Volume control                     |
-| `reset()` / `destroy()`                       | Clear/reset/detach logic           |
-| `getBitrate()`                                | Returns current bitrate            |
-| `getResolution()`                             | Returns active video resolution    |
-| `getAvailableRenditions()`                    | Lists all video renditions         |
-| `setRendition(res: string)`                   | Switch to a specific resolution    |
-| `setAdaptiveBitrate(enable: boolean)`         | Toggle ABR (stub for now)          |
+| Method | Description |
+| --- | --- |
+| `attachVideoElement(video: HTMLVideoElement)` | Binds the video element |
+| `load(manifestUrl: string)` | Loads and parses the DASH manifest |
+| `play()` / `pause()` | Control playback |
+| `seekTo(time: number)` | Jump to a specific timestamp |
+| `setVolume(number)` / `mute()` / `unmute()` | Volume control |
+| `reset()` / `destroy()` | Clear/reset/detach logic |
+| `getBitrate()` | Returns current bitrate |
+| `getResolution()` | Returns active video resolution |
+| `getAvailableRenditions()` | Lists all video renditions |
+| `setRendition(res: string)` | Switch to a specific resolution (disables ABR) |
+| `setAdaptiveBitrate(enable: boolean)` | Enable or disable ABR |
+| `getTextTracks()` | Returns available subtitle/caption tracks |
+| `setTextTrack(language: string)` | Activate a subtitle track by language |
+| `disableTextTrack()` | Hide all subtitle tracks |
+| `isLive()` | Returns true for live DASH streams |
+| `seekToLiveEdge()` | Jump to the live edge |
+| `getDVRWindow()` | Returns `{ start, end }` of the DVR window |
 
 ### Event Hooks
 
@@ -113,6 +133,15 @@ npm run build
 
 # Watch for changes and rebuild
 npm run watch
+
+# Run tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Generate API docs
+npm run docs
 ```
 
 ## License
