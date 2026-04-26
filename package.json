@@ -3,7 +3,7 @@
   "main": "dist/mse-nav-player.es5.js",
   "module": "dist/mse-nav-player.es6.js",
   "types": "dist/types/index.d.ts",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
