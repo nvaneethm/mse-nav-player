@@ -242,6 +242,11 @@ export class MediaSourceHandler {
 
       if (this.isDestroyed) return;
 
+      // Re-check updating: a queued remove from handleSeeking may have started
+      // between the awaited updateend resolving and this line executing.
+      // _onUpdateEnd will re-trigger appendNextSegment when the buffer is free.
+      if (track.sourceBuffer.updating) return;
+
       track.sourceBuffer.appendBuffer(segment.data);
       track.segmentIndex += 1;
       // Do NOT schedule next append here; rely on updateend event
