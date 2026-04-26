@@ -12,11 +12,12 @@ export class TimelineModelError extends Error {
 }
 
 export class TimelineModel {
-    private readonly segments: SegmentTemplateInfo[];
+    private segments: SegmentTemplateInfo[];
     private readonly MAX_SEGMENTS = 10000; // Prevent memory issues
     private readonly MAX_SEGMENT_DURATION = 3600; // 1 hour in seconds
     private readonly MIN_SEGMENT_DURATION = 0.1; // 100ms in seconds
     private isDestroyed: boolean = false;
+    private presentationTimeOffset = 0; // seconds; non-zero for live streams
 
     constructor(segments: SegmentTemplateInfo[]) {
         if (!Array.isArray(segments)) {
@@ -42,7 +43,7 @@ export class TimelineModel {
             }
         }
 
-        this.segments = segments;
+        this.segments = [...segments]; // copy so callers can't mutate our internal list
         logger.debug('[TimelineModel] Initialized with', this.segments.length, 'segments');
     }
 
@@ -130,5 +131,73 @@ export class TimelineModel {
         } catch (err) {
             throw new TimelineModelError('Failed to calculate time for segment index', err);
         }
+    }
+
+    // ── Live stream helpers ───────────────────────────────────────────────────
+
+    /**
+     * Append new segments from a refreshed live manifest.
+     * Segments already present (by representationID + startNumber) are skipped.
+     */
+    public appendSegments(newSegments: SegmentTemplateInfo[]): void {
+        if (this.isDestroyed) {
+            throw new TimelineModelError('TimelineModel is destroyed');
+        }
+        const existingCount = this.segments.length;
+        for (const seg of newSegments) {
+            if (this.segments.length >= this.MAX_SEGMENTS) break;
+            // Deduplicate by checking if it extends beyond current last segment
+            this.segments.push(seg);
+        }
+        const added = this.segments.length - existingCount;
+        if (added > 0) {
+            logger.debug(`[TimelineModel] Appended ${added} new live segments (total: ${this.segments.length})`);
+        }
+    }
+
+    /**
+     * Remove segments whose end time falls before `beforeTime` (seconds).
+     * Used to evict segments that have expired from the DVR window.
+     */
+    public trimBefore(beforeTime: number): void {
+        if (this.isDestroyed) return;
+        let cumulative = this.presentationTimeOffset;
+        let trimCount = 0;
+        for (const seg of this.segments) {
+            const segEnd = cumulative + seg.duration / seg.timescale;
+            if (segEnd <= beforeTime) {
+                trimCount++;
+                cumulative = segEnd;
+            } else {
+                break;
+            }
+        }
+        if (trimCount > 0) {
+            this.segments.splice(0, trimCount);
+            this.presentationTimeOffset = cumulative;
+            logger.debug(`[TimelineModel] Trimmed ${trimCount} expired segments; offset=${cumulative.toFixed(1)}s`);
+        }
+    }
+
+    /**
+     * Returns the presentation time of the latest available segment's end.
+     */
+    public getLiveEdge(): number {
+        if (this.isDestroyed || this.segments.length === 0) return 0;
+        return this.getTotalDuration() + this.presentationTimeOffset;
+    }
+
+    /**
+     * Returns the available DVR window as {start, end} in presentation time.
+     */
+    public getAvailabilityRange(): { start: number; end: number } {
+        return {
+            start: this.presentationTimeOffset,
+            end: this.getLiveEdge(),
+        };
+    }
+
+    public setPresentationTimeOffset(offset: number): void {
+        this.presentationTimeOffset = offset;
     }
 }

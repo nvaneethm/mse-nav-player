@@ -91,11 +91,20 @@
             const renditions = player.getAvailableRenditions()
             if (renditions && renditions.length > 0) {
               renditionSelector.style.display = "inline-block"
-              renditionSelector.innerHTML = `<option disabled selected>Select Rendition</option>`
+              renditionSelector.innerHTML = ''
+
+              // Auto option — enables ABR
+              const autoOption = document.createElement("option")
+              autoOption.value = "auto"
+              autoOption.textContent = "Auto (ABR)"
+              autoOption.selected = true
+              renditionSelector.appendChild(autoOption)
+
               renditions.forEach((res) => {
                 const option = document.createElement("option")
                 option.value = res.resolution
-                option.textContent = `${res.resolution} - ${res.bitrate}bps`
+                const kbps = Math.round(res.bitrate / 1000)
+                option.textContent = `${res.resolution} — ${kbps} kbps`
                 renditionSelector.appendChild(option)
               })
             }
@@ -105,18 +114,29 @@
         }
       })
 
+      let abrActive = true  // ABR is on by default
+
       renditionSelector.addEventListener("change", (e) => {
-        const resolution = e.target.value
-        player.setRendition(resolution)
-        currentLabel.textContent = `🔄 Switching to: ${resolution}`
+        const value = e.target.value
+        if (value === "auto") {
+          abrActive = true
+          player.setAdaptiveBitrate(true)
+          currentLabel.textContent = "Auto — ABR active"
+        } else {
+          abrActive = false
+          player.setRendition(value)
+          currentLabel.textContent = `Switching to: ${value}`
+        }
       })
 
       setInterval(() => {
-        const currentRes = player.getCurrentRendition?.()
-        if (currentRes) {
-          currentLabel.textContent = `🔄 Currently Playing: ${currentRes}`
+        const res = player.getResolution()
+        if (res && res !== "0x0") {
+          currentLabel.textContent = abrActive
+            ? `Auto — ${res}`
+            : `Manual — ${res}`
         }
-      }, 2000)
+      }, 1000)
     </script>
   </body>
 </html>

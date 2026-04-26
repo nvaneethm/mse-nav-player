@@ -17,6 +17,8 @@ import { EventBus } from '../events/EventBus';
 import { PlayerEventType } from '../events/PlayerEvents';
 import { LogLevel } from '../utils/Logger';
 import { SegmentTemplateInfo } from '../dash/types';
+import { AbrController } from '../abr/AbrController';
+import { ManifestRefresher, ParsedMPD } from '../dash/ManifestRefresher';
 
 /**
  * Callback type for general player events.
@@ -66,6 +68,9 @@ export class Player {
     private retryCount: number = 0;
     private lastError: Error | null = null;
     private isPlayerInitialized: boolean = false;
+    private abrController: AbrController;
+    private manifestRefresher: ManifestRefresher | null = null;
+    private liveTimeShiftBufferDepth = 0; // seconds
 
     /**
     * Hook called when playback starts.
@@ -110,6 +115,7 @@ export class Player {
         this.eventBus = new EventBus();
         this.mpdParser = new MPDParser();
         this.segmentFetcher = new SegmentFetcher();
+        this.abrController = new AbrController(this.MIN_BUFFER_SIZE);
         this.setupEventListeners();
         logger.debug('[Player] Initialized');
     }
@@ -166,7 +172,8 @@ export class Player {
 
     private async loadManifest(manifestUrl: string): Promise<void> {
         try {
-            const { videoTracks, audioTracks } = await this.mpdParser.parse(manifestUrl);
+            const { videoTracks, audioTracks, textTracks, isLive, minimumUpdatePeriod, timeShiftBufferDepth } =
+                await this.mpdParser.parse(manifestUrl);
             if (!videoTracks.length) {
                 throw new PlayerError('No video tracks found in manifest');
             }
@@ -177,6 +184,18 @@ export class Player {
             this.videoElement.src = URL.createObjectURL(this.mediaSource);
             this.mediaSourceHandler = new MediaSourceHandler(this.videoElement, this.mediaSource, this.segmentFetcher);
             this.mediaSourceHandler.registerEventBus(this.events);
+            this.abrController = new AbrController(this.MIN_BUFFER_SIZE);
+            this.mediaSourceHandler.setAbrController(this.abrController);
+
+            if (isLive) {
+                this.mediaSourceHandler.setLive(true);
+                this.liveTimeShiftBufferDepth = timeShiftBufferDepth ?? 0;
+                const pollMs = minimumUpdatePeriod ?? 5000;
+                this.manifestRefresher = new ManifestRefresher(manifestUrl, this.mpdParser, pollMs);
+                this.manifestRefresher.onUpdate((parsed: ParsedMPD) => this.onManifestUpdate(parsed));
+                this.manifestRefresher.start();
+                logger.info(`[Player] Live stream detected — manifest refresh every ${pollMs}ms`);
+            }
             for (const track of videoTracks) {
                 const generator = new SegmentURLGenerator(track);
                 this.mediaSourceHandler.addVideoTrack(track.resolution!, {
@@ -195,6 +214,9 @@ export class Player {
                     generator,
                     segmentIndex: 0
                 });
+            }
+            for (const textTrack of textTracks) {
+                this.mediaSourceHandler.addTextTrack(textTrack);
             }
             const initPromise = this.mediaSourceHandler.init();
             this.pendingOperations.add(initPromise);
@@ -312,16 +334,61 @@ export class Player {
       * @param resolution - The resolution string (e.g., '640x360', '1920x1080') to switch to.
       */
     public setRendition(resolution: string): void {
+        // Manual selection overrides ABR — disable it so the next segment fetch
+        // doesn't immediately upgrade back. Re-enable with setAdaptiveBitrate(true).
+        this.abrController.setEnabled(false);
         this.mediaSourceHandler?.setRendition(resolution);
     }
-    /**
-      * Enables or disables adaptive bitrate (ABR) logic.
-      * Currently a stub. Future implementations may automatically adjust quality based on bandwidth.
-      * @param enable - Set to true to enable ABR, false to disable.
-      */
     public setAdaptiveBitrate(enable: boolean): void {
+        this.abrController.setEnabled(enable);
         this.mediaSourceHandler?.setAdaptiveBitrate(enable);
     }
+
+    // ── Live API ───────────────────────────────────────────────────────────
+
+    public isLive(): boolean {
+        return this.manifestRefresher !== null;
+    }
+
+    public getDVRWindow(): { start: number; end: number } {
+        return this.timelineModel?.getAvailabilityRange() ?? { start: 0, end: 0 };
+    }
+
+    public seekToLiveEdge(): void {
+        if (!this.timelineModel || !this.videoElement) return;
+        const edge = this.timelineModel.getLiveEdge();
+        // 3-second safety margin from the true live edge
+        this.videoElement.currentTime = Math.max(0, edge - 3);
+    }
+
+    private onManifestUpdate(parsed: ParsedMPD): void {
+        if (this.isDestroyed || !this.timelineModel) return;
+        // Append any new video segments discovered in the refreshed manifest
+        if (parsed.videoTracks.length > 0) {
+            this.timelineModel.appendSegments(parsed.videoTracks);
+        }
+        // Evict segments outside the DVR window
+        if (this.liveTimeShiftBufferDepth > 0) {
+            const edge = this.timelineModel.getLiveEdge();
+            this.timelineModel.trimBefore(edge - this.liveTimeShiftBufferDepth);
+        }
+        logger.debug('[Player] Manifest refreshed — timeline updated');
+    }
+
+    // ── Subtitle API ───────────────────────────────────────────────────────
+
+    public getTextTracks(): { language: string; role?: string }[] {
+        return this.mediaSourceHandler?.getTextTracks() ?? [];
+    }
+
+    public async setTextTrack(language: string): Promise<void> {
+        await this.mediaSourceHandler?.enableTextTrack(language);
+    }
+
+    public disableTextTrack(): void {
+        this.mediaSourceHandler?.disableTextTrack();
+    }
+
     /**
      * Destroys the player instance and detaches the video element.
      */
@@ -342,6 +409,8 @@ export class Player {
                 this.videoElement.load();
             }
 
+            this.manifestRefresher?.stop();
+            this.manifestRefresher = null;
             this.mediaSourceHandler.destroy();
             this.segmentFetcher.destroy();
             this.eventBus.destroy();

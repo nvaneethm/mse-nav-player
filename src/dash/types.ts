@@ -15,11 +15,15 @@ export interface SegmentTemplateInfo {
   resolution?: string;
   bandwidth: number;
   totalDuration?: number;
+  trackType?: 'video' | 'audio' | 'text';
+  language?: string;
+  role?: string;
 }
 
 export interface SegmentDownloadResult {
   url: string;
   data: ArrayBuffer;
+  downloadBandwidth?: number; // bits per second, measured during fetch
 }
 
 export { TimelineModel, TimelineSegment };
