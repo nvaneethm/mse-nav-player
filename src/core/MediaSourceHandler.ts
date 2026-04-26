@@ -1,5 +1,6 @@
-import { SegmentFetcher, SegmentFetchError } from "../dash/SegmentFetcher";
-import { SegmentURLGenerator } from "../dash/SegmentURLGenerator";
+import { SegmentFetcher, SegmentFetchError } from "../dash/fetcher";
+import { SegmentURLGenerator } from "../dash/url";
+import { parseSidx } from "../dash/sidx/SidxParser";
 import { logger } from "../utils/Logger";
 import { PlayerEvents } from "../events/PlayerEvents";
 import { AD_EVENTS, AD_LOG_MESSAGES } from "../ads/constants";
@@ -18,6 +19,8 @@ interface TrackBuffer {
   segmentIndex: number;
   _onUpdateEnd?: EventListener;
   ended?: boolean;
+  /** Guards against concurrent fetch calls for the same track */
+  isFetching?: boolean;
 }
 
 const removeQueues = new WeakMap<SourceBuffer, Array<[number, number]>>();
@@ -192,7 +195,7 @@ export class MediaSourceHandler {
       });
     }
 
-    const initSeg = await this.segmentFetcher.fetchSegment(track.generator.getInitializationURL());
+    const initSeg = await this.fetchInitSegment(track);
     sb.appendBuffer(initSeg.data);
 
     const onUpdateEnd = () => this.appendNextSegment(track);
@@ -217,13 +220,22 @@ export class MediaSourceHandler {
         this.tryEndOfStream();
       });
     }
+
+    // Kick off audio buffering if it was deferred during the rendition switch
+    if (this.audioTrack?.sourceBuffer && !this.audioTrack.sourceBuffer.updating && !this.audioTrack.ended) {
+      this.appendNextSegment(this.audioTrack);
+    }
   }
 
   private async appendNextSegment(track: TrackBuffer, retryCount = 0): Promise<void> {
-    if (this.isDestroyed || this.adPlaying || track.ended || this.isSwitchingRendition) {
-      logger.info(`[appendNextSegment] Skipped: ad is playing, handler destroyed, track ended, or rendition switch in progress`);
+    // isSwitchingRendition only blocks the video track — audio must keep buffering
+    if (this.isDestroyed || this.adPlaying || track.ended || (this.isSwitchingRendition && track.type === 'video')) {
+      logger.debug(`[appendNextSegment] Skipped: destroyed=${this.isDestroyed} ad=${this.adPlaying} ended=${track.ended} switching=${this.isSwitchingRendition}`);
       return;
     }
+
+    // One fetch at a time per track — prevents FetchQueue from canceling its own in-flight requests
+    if (track.isFetching) return;
 
     if (!track.sourceBuffer || track.sourceBuffer.updating) return;
 
@@ -247,10 +259,14 @@ export class MediaSourceHandler {
       }
     }
 
+    track.isFetching = true;
     try {
       const url = track.generator.getMediaSegmentURL(track.segmentIndex);
-      logger.info(`[appendNextSegment] Appending segment ${track.segmentIndex}: ${url}`);
-      const segment = await this.segmentFetcher.fetchSegment(url);
+      const byteRange = track.generator.getMediaSegmentByteRange(track.segmentIndex);
+      logger.info(`[appendNextSegment] Appending segment ${track.segmentIndex}: ${url}${byteRange ? ` [${byteRange}]` : ''}`);
+      const segment = byteRange
+        ? await this.segmentFetcher.fetchSegmentWithRange(url, byteRange)
+        : await this.segmentFetcher.fetchSegment(url);
 
       if (!segment?.data) throw new Error("Empty segment");
 
@@ -306,10 +322,13 @@ export class MediaSourceHandler {
         logger.error("[appendNextSegment] Error fetching/append media segment:", err);
       }
 
+      let scheduleRetry = false;
       if (retryCount + 1 < this.MAX_RETRIES) {
         logger.warn(`[appendNextSegment] Retrying segment ${track.segmentIndex} (attempt ${retryCount + 1}/${this.MAX_RETRIES})`);
+        scheduleRetry = true;
         const timeout = setTimeout(() => {
           this.pendingTimeouts.delete(timeout);
+          track.isFetching = false;
           this.appendNextSegment(track, retryCount + 1);
         }, this.RETRY_DELAY);
         this.pendingTimeouts.add(timeout);
@@ -317,13 +336,59 @@ export class MediaSourceHandler {
         logger.error(`[appendNextSegment] Skipping segment ${track.segmentIndex} after max retries`);
         track.segmentIndex += 1;
         if (track.segmentIndex > maxIndex) {
+          track.isFetching = false;
           track.ended = true;
           this.tryEndOfStream();
           return;
         }
-        // Wait for updateend event to try again
       }
+      if (!scheduleRetry) track.isFetching = false;
+      return;
     }
+    track.isFetching = false;
+  }
+
+  /**
+   * Fetches the initialization segment for a track.
+   * For SegmentBase tracks: uses the init byte range from the MPD and also
+   * fetches+parses the SIDX box to populate segmentBaseByteRanges on the info object.
+   * For all other tracks: fetches the template-based initialization URL.
+   */
+  private async fetchInitSegment(track: TrackBuffer): Promise<import('../dash/types').SegmentDownloadResult> {
+    const info = track.generator.getInfo();
+
+    if (info.segmentBaseInitRange) {
+      // Fetch init segment (ftyp + moov) via byte-range
+      const initResult = await this.segmentFetcher.fetchSegmentWithRange(
+        info.baseURL,
+        info.segmentBaseInitRange
+      );
+
+      // Fetch and parse the SIDX box to build per-segment byte ranges
+      if (info.segmentBaseIndexRange && !info.segmentBaseByteRanges) {
+        try {
+          const sidxResult = await this.segmentFetcher.fetchSegmentWithRange(
+            info.baseURL,
+            info.segmentBaseIndexRange
+          );
+          const ranges = parseSidx(sidxResult.data, info.segmentBaseIndexRange);
+          if (ranges.length > 0) {
+            // Mutate the info object so SegmentURLGenerator can use the ranges
+            (info as import('../dash/types').SegmentTemplateInfo).segmentBaseByteRanges = ranges;
+            logger.info(`[MediaSourceHandler] SegmentBase: parsed ${ranges.length} segment ranges`);
+          } else {
+            logger.warn('[MediaSourceHandler] SegmentBase: SIDX parse returned no ranges');
+          }
+        } catch (err) {
+          logger.warn('[MediaSourceHandler] SegmentBase: SIDX fetch/parse failed, stream may not play:', err);
+        }
+      }
+
+      return initResult;
+    }
+
+    // Normal SegmentTemplate / SegmentList path
+    return this.segmentFetcher.fetchSegment(track.generator.getInitializationURL());
   }
 
   private tryEndOfStream() {
@@ -360,7 +425,7 @@ export class MediaSourceHandler {
     }
 
     if (this.audioTrack) {
-      const initSeg = await this.segmentFetcher.fetchSegment(this.audioTrack.generator.getInitializationURL());
+      const initSeg = await this.fetchInitSegment(this.audioTrack);
       this.audioTrack.sourceBuffer = this.mediaSource.addSourceBuffer(this.audioTrack.mimeType);
       this.audioTrack.sourceBuffer.appendBuffer(initSeg.data);
       this.audioTrack.sourceBuffer.addEventListener("updateend", () => this.appendNextSegment(this.audioTrack!));

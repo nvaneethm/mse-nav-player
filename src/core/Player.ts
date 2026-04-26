@@ -4,21 +4,21 @@
  * It supports event hooks, volume controls, and resolution switching.
  */
 
-import { MPDParser } from '../dash/MPDParser.js';
+import { MPDParser } from '../dash/manifest';
+import { ManifestRefresher } from '../dash/manifest';
+import { SegmentFetcher } from '../dash/fetcher';
+import { SegmentURLGenerator } from '../dash/url';
 import { MediaSourceHandler } from './MediaSourceHandler.js';
 import { logger } from '../utils/Logger.js';
 import { TimelineSegment } from '../types/timeline.js';
-import { SegmentFetcher } from '../dash/SegmentFetcher.js';
-import { SegmentURLGenerator } from '../dash/SegmentURLGenerator.js';
 import { TimelineModel as TimelineModelClass } from './TimelineModel.js';
 import { PlayerEvents } from '../events/PlayerEvents.js';
 import { AdManager, AdConfig } from '../ads/AdManager.js';
 import { EventBus } from '../events/EventBus';
 import { PlayerEventType } from '../events/PlayerEvents';
 import { LogLevel } from '../utils/Logger';
-import { SegmentTemplateInfo } from '../dash/types';
+import { SegmentTemplateInfo, ParsedMPD } from '../dash/types';
 import { AbrController } from '../abr/AbrController';
-import { ManifestRefresher, ParsedMPD } from '../dash/ManifestRefresher';
 
 /**
  * Callback type for general player events.
@@ -509,10 +509,9 @@ export class Player {
         }
     }
 
-    private handleSegmentLoaded(segment: TimelineSegment): void {
+    private handleSegmentLoaded(_segment: TimelineSegment): void {
         this.retryCount = 0;
         this.lastError = null;
-        this.eventBus.emit(PlayerEventType.SEGMENT_LOADED, segment);
     }
 
     private handleSegmentError(error: unknown): void {

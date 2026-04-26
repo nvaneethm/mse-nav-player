@@ -32,12 +32,11 @@ export class TimelineModel {
             throw new TimelineModelError(`Too many segments: ${segments.length} (max: ${this.MAX_SEGMENTS})`);
         }
 
-        // Validate segment durations
+        // Validate segment durations (max only — min is not enforced because $Time$
+        // tracks derive duration from SegmentTimeline which may differ from the
+        // SegmentTemplate duration attribute)
         for (const segment of segments) {
             const duration = segment.duration / segment.timescale;
-            if (duration < this.MIN_SEGMENT_DURATION) {
-                throw new TimelineModelError(`Segment duration too short: ${duration}s (min: ${this.MIN_SEGMENT_DURATION}s)`);
-            }
             if (duration > this.MAX_SEGMENT_DURATION) {
                 throw new TimelineModelError(`Segment duration too long: ${duration}s (max: ${this.MAX_SEGMENT_DURATION}s)`);
             }

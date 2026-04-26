@@ -1,6 +1,6 @@
 import { SegmentTemplateInfo } from '../dash/types';
-import { SegmentFetcher } from '../dash/SegmentFetcher';
-import { SegmentURLGenerator } from '../dash/SegmentURLGenerator';
+import { SegmentFetcher } from '../dash/fetcher';
+import { SegmentURLGenerator } from '../dash/url';
 import { logger } from '../utils/Logger';
 
 interface ManagedTextTrack {
@@ -79,10 +79,23 @@ export class TextTrackHandler {
 
   private async loadCues(entry: ManagedTextTrack): Promise<void> {
     const { info, track } = entry;
-    const generator = new SegmentURLGenerator(info);
     const codecs = info.codecs || '';
 
     try {
+      // Sidecar mode: baseURL is the full URL, no SegmentTemplate
+      if (info.media === '') {
+        const response = await fetch(info.baseURL);
+        if (!response.ok) throw new Error(`HTTP ${response.status} fetching subtitle: ${info.baseURL}`);
+        const text = await response.text();
+        if (text.trimStart().startsWith('WEBVTT')) {
+          this.parseVTT(text, track);
+        }
+        entry.loaded = true;
+        logger.info(`[TextTrackHandler] Loaded sidecar VTT for lang=${info.language}`);
+        return;
+      }
+
+      const generator = new SegmentURLGenerator(info);
       if (info.mimeType.includes('vtt') || info.mimeType.includes('text/vtt')) {
         // Plain WebVTT sidecar file — treat init URL as the full VTT file URL
         const url = generator.getInitializationURL();

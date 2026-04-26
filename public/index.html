@@ -18,123 +18,243 @@
       video {
         display: block;
         width: 100%;
+        max-width: 854px;
         height: auto;
       }
 
-      button,
-      select {
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
         margin-top: 1rem;
+        align-items: center;
+        justify-content: center;
+        max-width: 854px;
+        width: 100%;
+      }
+
+      button, select {
         padding: 10px 20px;
-        font-size: 16px;
+        font-size: 15px;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+      }
+
+      button {
+        background: #1db954;
+        color: #fff;
+      }
+
+      select {
+        background: #2a2a2a;
+        color: #fff;
+        border: 1px solid #444;
+      }
+
+      .stream-selector {
+        width: 100%;
+        max-width: 854px;
+        margin-top: 1rem;
+      }
+
+      .stream-selector label {
+        display: block;
+        margin-bottom: 0.4rem;
+        font-size: 13px;
+        color: #aaa;
+      }
+
+      .stream-selector select {
+        width: 100%;
+        font-size: 14px;
+      }
+
+      #statusBar {
+        margin-top: 0.75rem;
+        font-size: 13px;
+        color: #aaa;
+        min-height: 1.4em;
+      }
+
+      .label {
+        font-size: 12px;
+        color: #aaa;
+        margin-right: 4px;
       }
     </style>
   </head>
   <body>
     <h1>DASH / MSE Player</h1>
+
     <video id="video" controls></video>
-    <br />
-    <button id="playButton">Play Video</button>
 
-    <!-- Dropdown for renditions -->
-    <select id="renditionSelector" style="display: none">
-      <option disabled selected>Choose Rendition</option>
-    </select>
+    <div class="stream-selector">
+      <label>Stream</label>
+      <select id="streamSelector">
+        <optgroup label="SegmentTemplate — $Number$">
+          <option value="https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd" selected>
+            Big Buck Bunny (VOD, multi-rendition)
+          </option>
+          <option value="https://dash.akamaized.net/dash264/TestCases/2b/qualcomm/1/MultiResMPEG2.mpd">
+            DASH-IF Multi-Resolution MPEG2 ($Number$)
+          </option>
+          <option value="https://dash.akamaized.net/envivio/dashpr/clear/Manifest.mpd">
+            Envivio Clear ($Number$, multi-rendition)
+          </option>
+        </optgroup>
+        <optgroup label="SegmentTemplate — $Time$">
+          <option value="https://dash.akamaized.net/dash264/TestCases/2c/qualcomm/1/MultiResMPEG2.mpd">
+            DASH-IF Multi-Resolution MPEG2 ($Time$)
+          </option>
+        </optgroup>
+        <optgroup label="SegmentBase (single-file MP4 + byte-range)">
+          <option value="https://dash.akamaized.net/dash264/TestCases/1a/netflix/exMPD_BIP_TC1.mpd">
+            Netflix BIP (SegmentBase)
+          </option>
+          <option value="https://dash.akamaized.net/dash264/TestCases/2a/qualcomm/1/MultiResMPEG2.mpd">
+            DASH-IF Multi-Res (SegmentBase)
+          </option>
+        </optgroup>
+        <optgroup label="Multi-Period">
+          <option value="https://dash.akamaized.net/dash264/TestCases/5a/1/manifest.mpd">
+            DASH-IF 2-Period stream
+          </option>
+          <option value="https://dash.akamaized.net/dash264/TestCases/5b/1/manifest.mpd">
+            DASH-IF 3-Period stream
+          </option>
+          <option value="https://dash.akamaized.net/dash264/TestCases/5c/1/manifest.mpd">
+            DASH-IF 3-Period with gaps
+          </option>
+        </optgroup>
+        <optgroup label="Subtitles / Text Tracks">
+          <option value="https://storage.googleapis.com/shaka-demo-assets/sintel/dash.mpd">
+            Sintel (sidecar WebVTT — 10 languages)
+          </option>
+          <option value="https://storage.googleapis.com/shaka-demo-assets/tos-surround/dash.mpd">
+            Tears of Steel — Surround (multi-audio)
+          </option>
+        </optgroup>
+      </select>
+    </div>
 
-    <p
-      id="currentRenditionLabel"
-      style="margin-top: 1rem; font-weight: bold"
-    ></p>
+    <div class="controls">
+      <button id="playButton">Load &amp; Play</button>
+
+      <span class="label">Quality:</span>
+      <select id="renditionSelector" style="display: none">
+        <option disabled selected>Choose Rendition</option>
+      </select>
+
+      <span class="label" id="subLabel" style="display:none">Subtitles:</span>
+      <select id="subtitleSelector" style="display: none">
+        <option value="off">Off</option>
+      </select>
+    </div>
+
+    <div id="statusBar"></div>
 
     <script src="../dist/mse-nav-player.es5.js"></script>
     <script>
       const player = new MseNavPlayer.Player()
       const videoEl = document.getElementById("video")
       const playBtn = document.getElementById("playButton")
+      const streamSelector = document.getElementById("streamSelector")
       const renditionSelector = document.getElementById("renditionSelector")
-      const currentLabel = document.getElementById("currentRenditionLabel")
+      const subtitleSelector = document.getElementById("subtitleSelector")
+      const subLabel = document.getElementById("subLabel")
+      const statusBar = document.getElementById("statusBar")
 
       player.attachVideoElement(videoEl)
 
+      function setStatus(msg) {
+        statusBar.textContent = msg
+      }
+
       playBtn.addEventListener("click", async () => {
-        // Define content + ad segments
-        const segments = [
-          {
-            start: 0,
-            end: 10,
-            url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps_480x270_1500k/bbb_30fps_480x270_1500k_0.m4s",
-            type: "content",
-          },
-          {
-            start: 10,
-            end: 20,
-            url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps_480x270_1500k/bbb_30fps_480x270_1500k_1.m4s",
-            type: "ad",
-          },
-          {
-            start: 20,
-            end: 60,
-            url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps_480x270_1500k/bbb_30fps_480x270_1500k_2.m4s",
-            type: "content",
-          },
-        ]
+        const manifestUrl = streamSelector.value
+        renditionSelector.style.display = "none"
+        subtitleSelector.style.display = "none"
+        subLabel.style.display = "none"
+        setStatus("Loading…")
 
         try {
-          // First load the manifest to initialize MediaSourceHandler
-          await player.load("https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd")
+          await player.load(manifestUrl)
+          setStatus("Loaded. Buffering…")
 
-          // Then create and set the timeline
-          const timelineModel = new MseNavPlayer.TimelineModel(segments)
-          player.setTimeline(timelineModel)
-
-          // Update rendition selector after a delay
+          // Populate rendition selector
           setTimeout(() => {
             const renditions = player.getAvailableRenditions()
             if (renditions && renditions.length > 0) {
               renditionSelector.style.display = "inline-block"
-              renditionSelector.innerHTML = ''
+              renditionSelector.innerHTML = ""
 
-              // Auto option — enables ABR
               const autoOption = document.createElement("option")
               autoOption.value = "auto"
               autoOption.textContent = "Auto (ABR)"
               autoOption.selected = true
               renditionSelector.appendChild(autoOption)
 
-              renditions.forEach((res) => {
-                const option = document.createElement("option")
-                option.value = res.resolution
-                const kbps = Math.round(res.bitrate / 1000)
-                option.textContent = `${res.resolution} — ${kbps} kbps`
-                renditionSelector.appendChild(option)
+              renditions.forEach((r) => {
+                const opt = document.createElement("option")
+                opt.value = r.resolution
+                opt.textContent = `${r.resolution} — ${Math.round(r.bitrate / 1000)} kbps`
+                renditionSelector.appendChild(opt)
               })
             }
-          }, 3000)
-        } catch (error) {
-          console.error('Error initializing player:', error)
+
+            // Populate subtitle selector
+            const tracks = player.getTextTracks()
+            if (tracks && tracks.length > 0) {
+              subtitleSelector.style.display = "inline-block"
+              subLabel.style.display = "inline"
+              subtitleSelector.innerHTML = '<option value="off">Off</option>'
+
+              tracks.forEach((t) => {
+                const opt = document.createElement("option")
+                opt.value = t.language || "und"
+                opt.textContent = t.language
+                  ? `${t.language}${t.role ? " (" + t.role + ")" : ""}`
+                  : "Unknown"
+                subtitleSelector.appendChild(opt)
+              })
+            }
+          }, 2000)
+        } catch (err) {
+          setStatus("Error: " + err.message)
+          console.error(err)
         }
       })
 
-      let abrActive = true  // ABR is on by default
+      let abrActive = true
 
       renditionSelector.addEventListener("change", (e) => {
         const value = e.target.value
         if (value === "auto") {
           abrActive = true
           player.setAdaptiveBitrate(true)
-          currentLabel.textContent = "Auto — ABR active"
         } else {
           abrActive = false
           player.setRendition(value)
-          currentLabel.textContent = `Switching to: ${value}`
+          setStatus(`Switching to: ${value}`)
+        }
+      })
+
+      subtitleSelector.addEventListener("change", (e) => {
+        const value = e.target.value
+        if (value === "off") {
+          player.disableTextTrack()
+          setStatus("Subtitles off")
+        } else {
+          player.setTextTrack(value)
+          setStatus(`Subtitles: ${value}`)
         }
       })
 
       setInterval(() => {
         const res = player.getResolution()
         if (res && res !== "0x0") {
-          currentLabel.textContent = abrActive
-            ? `Auto — ${res}`
-            : `Manual — ${res}`
+          setStatus(abrActive ? `Auto — ${res}` : `Manual — ${res}`)
         }
       }, 1000)
     </script>
